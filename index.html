@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1e3a5f" />
+    <meta name="description" content="记录与管理各项目标的学习进度" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="学习进度" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
+    <link rel="apple-touch-icon" href="icons/icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <title>学习进度</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">
+        <div class="header-inner">
+          <div class="brand">
+            <div class="brand-icon" aria-hidden="true">📚</div>
+            <div>
+              <h1>学习进度</h1>
+              <p class="subtitle">追踪你的每一个目标</p>
+            </div>
+          </div>
+          <div class="header-actions">
+            <button type="button" class="btn btn-ghost" id="install-btn" hidden>安装应用</button>
+            <button type="button" class="btn btn-primary" id="add-goal-btn">+ 新目标</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="stats-bar" id="stats-bar" aria-label="总览统计"></section>
+
+        <section class="goals-section">
+          <div class="section-head">
+            <h2>我的目标</h2>
+            <div class="filter-tabs" role="tablist" aria-label="筛选目标">
+              <button type="button" class="filter-tab active" data-filter="all">全部</button>
+              <button type="button" class="filter-tab" data-filter="active">进行中</button>
+              <button type="button" class="filter-tab" data-filter="completed">已完成</button>
+            </div>
+          </div>
+          <div class="goals-grid" id="goals-grid"></div>
+          <div class="empty-state" id="empty-state" hidden>
+            <div class="empty-icon">🎯</div>
+            <h3>还没有学习目标</h3>
+            <p>点击「新目标」开始记录你的学习旅程</p>
+            <button type="button" class="btn btn-primary" id="empty-add-btn">创建第一个目标</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- 目标编辑弹窗 -->
+    <dialog class="modal" id="goal-modal">
+      <form class="modal-content" id="goal-form">
+        <div class="modal-header">
+          <h3 id="goal-modal-title">新建目标</h3>
+          <button type="button" class="icon-btn" id="close-goal-modal" aria-label="关闭">✕</button>
+        </div>
+        <div class="form-grid">
+          <label class="field full">
+            <span>目标名称</span>
+            <input type="text" name="title" required maxlength="60" placeholder="例如：Python 数据分析" />
+          </label>
+          <label class="field full">
+            <span>描述（可选）</span>
+            <textarea name="description" rows="2" maxlength="200" placeholder="简要说明学习目标…"></textarea>
+          </label>
+          <label class="field">
+            <span>分类</span>
+            <input type="text" name="category" maxlength="20" placeholder="编程 / 语言 / 考证" />
+          </label>
+          <label class="field">
+            <span>进度类型</span>
+            <select name="progressType">
+              <option value="percent">百分比</option>
+              <option value="hours">学习时长（小时）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span id="target-label">目标值</span>
+            <input type="number" name="target" min="1" step="1" value="100" required />
+          </label>
+          <label class="field">
+            <span>当前进度</span>
+            <input type="number" name="current" min="0" step="0.5" value="0" />
+          </label>
+          <label class="field">
+            <span>截止日期（可选）</span>
+            <input type="date" name="deadline" />
+          </label>
+          <label class="field">
+            <span>颜色标记</span>
+            <input type="color" name="color" value="#3b82f6" />
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="delete-goal-btn" hidden>删除目标</button>
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="cancel-goal-btn">取消</button>
+            <button type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 记录学习弹窗 -->
+    <dialog class="modal" id="log-modal">
+      <form class="modal-content" id="log-form">
+        <div class="modal-header">
+          <h3 id="log-modal-title">记录学习</h3>
+          <button type="button" class="icon-btn" id="close-log-modal" aria-label="关闭">✕</button>
+        </div>
+        <p class="log-goal-name" id="log-goal-name"></p>
+        <div class="form-grid">
+          <label class="field">
+            <span>日期</span>
+            <input type="date" name="date" required />
+          </label>
+          <label class="field">
+            <span id="log-amount-label">进度增量</span>
+            <input type="number" name="amount" min="0.5" step="0.5" value="1" required />
+          </label>
+          <label class="field full">
+            <span>学习笔记（可选）</span>
+            <textarea name="note" rows="3" maxlength="300" placeholder="今天学了什么…"></textarea>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="cancel-log-btn">取消</button>
+            <button type="submit" class="btn btn-primary">保存记录</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 目标详情弹窗 -->
+    <dialog class="modal modal-wide" id="detail-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="detail-title"></h3>
+          <button type="button" class="icon-btn" id="close-detail-modal" aria-label="关闭">✕</button>
+        </div>
+        <div id="detail-body"></div>
+      </div>
+    </dialog>
+
+    <div class="toast-container" id="toast-container" aria-live="polite"></div>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
