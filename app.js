@@ -108,7 +108,7 @@ function getPinnedGoal() {
 }
 
 function setPinnedGoal(goalId) {
-  if (state.pinnedGoalId === goalId) {
+  if (!goalId || state.pinnedGoalId === goalId) {
     state.pinnedGoalId = null;
     showToast('已取消首页展示');
   } else {
@@ -117,6 +117,13 @@ function setPinnedGoal(goalId) {
   }
   saveData();
   render();
+}
+
+function setPinnedGoalFromSelect(goalId) {
+  state.pinnedGoalId = goalId || null;
+  saveData();
+  render();
+  if (goalId) showToast('已设为首页展示');
 }
 
 function getNextTask(goal) {
@@ -316,24 +323,29 @@ function renderHome() {
 
 function renderHomeFeatured() {
   const container = $('#home-featured');
-  const goal = getPinnedGoal();
+  if (!container) return;
 
-  if (!goal || !container) {
-    if (container) container.innerHTML = '';
+  if (state.goals.length === 0) {
+    container.innerHTML = '';
     return;
   }
 
-  const { pct } = getTaskStats(goal);
-  const nextTask = getNextTask(goal);
-  const dl = formatDeadline(goal.deadline);
-  const pendingPreview = goal.tasks.filter((t) => !t.completed).slice(0, 3);
+  const goal = getPinnedGoal();
+  const options = state.goals
+    .map(
+      (g) =>
+        `<option value="${g.id}" ${state.pinnedGoalId === g.id ? 'selected' : ''}>${escapeHtml(g.title)}</option>`
+    )
+    .join('');
 
-  container.innerHTML = `
-    <div class="featured-section">
-      <div class="featured-head">
-        <h3 class="featured-title">首页展示</h3>
-        <button type="button" class="btn btn-ghost btn-sm unpin-btn" data-id="${goal.id}">取消展示</button>
-      </div>
+  let featuredCard = '';
+  if (goal) {
+    const { pct } = getTaskStats(goal);
+    const nextTask = getNextTask(goal);
+    const dl = formatDeadline(goal.deadline);
+    const pendingPreview = goal.tasks.filter((t) => !t.completed).slice(0, 3);
+
+    featuredCard = `
       <article class="featured-goal-card" data-id="${goal.id}" style="--goal-color:${goal.color}">
         <div class="featured-goal-top">
           <div>
@@ -366,7 +378,19 @@ function renderHomeFeatured() {
         }
         <p class="featured-enter">点击查看任务节点 →</p>
       </article>
+    `;
+  }
+
+  container.innerHTML = `
+    <div class="pin-picker-section">
+      <label class="pin-picker-label" for="pin-goal-select">首页展示目标</label>
+      <select id="pin-goal-select" class="pin-goal-select">
+        <option value="" ${!state.pinnedGoalId ? 'selected' : ''}>不展示任何目标</option>
+        ${options}
+      </select>
+      <p class="pin-picker-hint">选择后，该目标详情会显示在首页下方</p>
     </div>
+    ${featuredCard}
   `;
 }
 
@@ -411,7 +435,14 @@ function renderGoals() {
                 ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
               </div>
             </div>
-            <button type="button" class="icon-btn edit-btn" data-id="${goal.id}" aria-label="编辑" title="编辑">✎</button>
+            <div class="card-top-actions">
+              ${
+                showPin
+                  ? `<button type="button" class="icon-btn pin-icon-btn${isPinned ? ' pinned' : ''}" data-id="${goal.id}" title="${isPinned ? '取消首页展示' : '设为首页展示'}" aria-label="首页展示">${isPinned ? '★' : '☆'}</button>`
+                  : ''
+              }
+              <button type="button" class="icon-btn edit-btn" data-id="${goal.id}" aria-label="编辑" title="编辑">✎</button>
+            </div>
           </div>
           <div class="progress-wrap">
             <div class="progress-meta">
@@ -424,7 +455,7 @@ function renderGoals() {
             ${dl ? `<span class="deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</span>` : '<span class="deadline muted">点击查看任务节点 →</span>'}
             ${
               showPin
-                ? `<button type="button" class="btn btn-ghost btn-sm pin-btn${isPinned ? ' pinned' : ''}" data-id="${goal.id}">${isPinned ? '★ 首页展示中' : '☆ 首页展示'}</button>`
+                ? `<button type="button" class="btn btn-ghost btn-sm pin-btn${isPinned ? ' pinned' : ''}" data-id="${goal.id}">${isPinned ? '★ 首页展示中' : '☆ 设为首页展示'}</button>`
                 : ''
             }
           </div>
@@ -474,8 +505,8 @@ function renderGoalDetail() {
             ${goal.description ? `<p class="detail-desc">${escapeHtml(goal.description)}</p>` : ''}
             ${dl ? `<p class="detail-deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</p>` : ''}
           </div>
-          <button type="button" class="btn btn-ghost btn-sm pin-btn${state.pinnedGoalId === goal.id ? ' pinned' : ''}" data-id="${goal.id}">
-            ${state.pinnedGoalId === goal.id ? '★ 首页展示中' : '☆ 设为首页展示'}
+          <button type="button" class="btn btn-sm pin-btn${state.pinnedGoalId === goal.id ? ' pinned btn-ghost' : ' btn-primary'}" data-id="${goal.id}">
+            ${state.pinnedGoalId === goal.id ? '★ 已在首页展示' : '☆ 设为首页展示'}
           </button>
         </div>
       </div>
@@ -707,14 +738,13 @@ function bindEvents() {
   });
 
   $('#home-featured').addEventListener('click', (e) => {
-    const unpinBtn = e.target.closest('.unpin-btn');
-    if (unpinBtn) {
-      e.stopPropagation();
-      setPinnedGoal(unpinBtn.dataset.id);
-      return;
-    }
     const card = e.target.closest('.featured-goal-card');
     if (card) navigateToGoalDetail(card.dataset.id);
+  });
+
+  $('#home-featured').addEventListener('change', (e) => {
+    if (e.target.id !== 'pin-goal-select') return;
+    setPinnedGoalFromSelect(e.target.value);
   });
 
   $('#goal-form').addEventListener('submit', handleGoalSubmit);
@@ -766,7 +796,7 @@ function bindEvents() {
   });
 
   $('#goal-detail-body').addEventListener('click', (e) => {
-    const pinBtn = e.target.closest('.pin-btn');
+    const pinBtn = e.target.closest('.pin-btn, .pin-icon-btn');
     if (pinBtn) {
       e.stopPropagation();
       setPinnedGoal(pinBtn.dataset.id);
@@ -782,7 +812,7 @@ function bindEvents() {
   $('#goals-grid').addEventListener('click', (e) => {
     const moveUpBtn = e.target.closest('.move-up-btn');
     const moveDownBtn = e.target.closest('.move-down-btn');
-    const pinBtn = e.target.closest('.pin-btn');
+    const pinBtn = e.target.closest('.pin-btn, .pin-icon-btn');
     const editBtn = e.target.closest('.edit-btn');
     const card = e.target.closest('.goal-card');
 

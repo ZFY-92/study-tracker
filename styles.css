@@ -208,7 +208,66 @@ body {
 }
 
 .home-featured {
-  margin-top: 0.25rem;
+  margin-top: 1rem;
+}
+
+.pin-picker-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.1rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 0.85rem;
+}
+
+.pin-picker-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.pin-goal-select {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.pin-goal-select:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 50%, transparent);
+  border-color: var(--primary);
+}
+
+.pin-picker-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.card-top-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.pin-icon-btn {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+
+.pin-icon-btn.pinned {
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.pin-icon-btn:hover {
+  color: #b45309;
+  background: #fffbeb;
 }
 
 .featured-section {
