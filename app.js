@@ -13,6 +13,7 @@ let editingGoalId = null;
 let detailGoalId = null;
 /** @type {TaskNode[]} */
 let editingTasks = [];
+let draggedGoalId = null;
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -137,6 +138,54 @@ function filteredGoals() {
   }
 }
 
+function canReorderGoals() {
+  return state.filter === 'all' && state.goals.length > 1;
+}
+
+function moveGoalToIndex(fromId, toId) {
+  if (fromId === toId) return;
+  const fromIdx = state.goals.findIndex((g) => g.id === fromId);
+  const toIdx = state.goals.findIndex((g) => g.id === toId);
+  if (fromIdx < 0 || toIdx < 0) return;
+
+  const [item] = state.goals.splice(fromIdx, 1);
+  state.goals.splice(toIdx, 0, item);
+  saveData();
+  renderGoals();
+  showToast('顺序已更新');
+}
+
+function moveGoalByOffset(goalId, offset) {
+  const idx = state.goals.findIndex((g) => g.id === goalId);
+  const newIdx = idx + offset;
+  if (idx < 0 || newIdx < 0 || newIdx >= state.goals.length) return;
+
+  const [item] = state.goals.splice(idx, 1);
+  state.goals.splice(newIdx, 0, item);
+  saveData();
+  renderGoals();
+  showToast('顺序已更新');
+}
+
+function renderOrderControls(goal, index, total) {
+  if (!canReorderGoals()) return '';
+
+  return `
+    <div class="goal-order-controls">
+      <button type="button" class="drag-handle" draggable="true" data-id="${goal.id}" aria-label="拖动调整顺序" title="拖动调整顺序">⋮⋮</button>
+      <div class="order-actions">
+        <button type="button" class="icon-btn move-up-btn" data-id="${goal.id}" aria-label="上移" title="上移" ${index === 0 ? 'disabled' : ''}>↑</button>
+        <button type="button" class="icon-btn move-down-btn" data-id="${goal.id}" aria-label="下移" title="下移" ${index === total - 1 ? 'disabled' : ''}>↓</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateSortHint() {
+  const hint = $('#sort-hint');
+  if (hint) hint.hidden = !canReorderGoals();
+}
+
 function renderStats() {
   const total = state.goals.length;
   const active = state.goals.filter((g) => !isCompleted(g)).length;
@@ -187,6 +236,7 @@ function renderGoals() {
   if (state.goals.length === 0) {
     grid.innerHTML = '';
     empty.hidden = false;
+    updateSortHint();
     return;
   }
 
@@ -194,11 +244,12 @@ function renderGoals() {
 
   if (goals.length === 0) {
     grid.innerHTML = `<p class="no-logs">当前筛选下没有目标</p>`;
+    updateSortHint();
     return;
   }
 
   grid.innerHTML = goals
-    .map((goal) => {
+    .map((goal, index) => {
       const { pct } = getTaskStats(goal);
       const done = isCompleted(goal);
       const dl = formatDeadline(goal.deadline);
@@ -206,7 +257,10 @@ function renderGoals() {
       return `
         <article class="goal-card${done ? ' completed' : ''}" data-id="${goal.id}" style="--goal-color:${goal.color}">
           <div class="goal-card-top">
-            <h3 class="goal-title">${escapeHtml(goal.title)}</h3>
+            <div class="goal-title-wrap">
+              ${renderOrderControls(goal, index, goals.length)}
+              <h3 class="goal-title">${escapeHtml(goal.title)}</h3>
+            </div>
             ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
           </div>
           ${goal.description ? `<p class="goal-desc">${escapeHtml(goal.description)}</p>` : ''}
@@ -236,6 +290,8 @@ function renderGoals() {
       `;
     })
     .join('');
+
+  updateSortHint();
 }
 
 function escapeHtml(str) {
@@ -559,10 +615,22 @@ function bindEvents() {
   });
 
   $('#goals-grid').addEventListener('click', (e) => {
+    const moveUpBtn = e.target.closest('.move-up-btn');
+    const moveDownBtn = e.target.closest('.move-down-btn');
     const tasksBtn = e.target.closest('.tasks-btn');
     const editBtn = e.target.closest('.edit-btn');
     const card = e.target.closest('.goal-card');
 
+    if (moveUpBtn) {
+      e.stopPropagation();
+      moveGoalByOffset(moveUpBtn.dataset.id, -1);
+      return;
+    }
+    if (moveDownBtn) {
+      e.stopPropagation();
+      moveGoalByOffset(moveDownBtn.dataset.id, 1);
+      return;
+    }
     if (tasksBtn) {
       e.stopPropagation();
       openDetailModal(tasksBtn.dataset.id);
@@ -577,6 +645,51 @@ function bindEvents() {
     if (card) {
       openDetailModal(card.dataset.id);
     }
+  });
+
+  const grid = $('#goals-grid');
+
+  grid.addEventListener('dragstart', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle || !canReorderGoals()) return;
+
+    draggedGoalId = handle.dataset.id;
+    const card = handle.closest('.goal-card');
+    card?.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', draggedGoalId);
+  });
+
+  grid.addEventListener('dragend', (e) => {
+    draggedGoalId = null;
+    $$('.goal-card').forEach((card) => card.classList.remove('dragging', 'drag-over'));
+  });
+
+  grid.addEventListener('dragover', (e) => {
+    if (!draggedGoalId || !canReorderGoals()) return;
+    const card = e.target.closest('.goal-card');
+    if (!card || card.dataset.id === draggedGoalId) return;
+
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    $$('.goal-card').forEach((el) => el.classList.remove('drag-over'));
+    card.classList.add('drag-over');
+  });
+
+  grid.addEventListener('dragleave', (e) => {
+    const card = e.target.closest('.goal-card');
+    if (card) card.classList.remove('drag-over');
+  });
+
+  grid.addEventListener('drop', (e) => {
+    if (!draggedGoalId || !canReorderGoals()) return;
+    const card = e.target.closest('.goal-card');
+    if (!card) return;
+
+    e.preventDefault();
+    moveGoalToIndex(draggedGoalId, card.dataset.id);
+    draggedGoalId = null;
+    $$('.goal-card').forEach((el) => el.classList.remove('drag-over', 'dragging'));
   });
 }
 
