@@ -1,4 +1,4 @@
-const CACHE_NAME = 'learning-progress-v3';
+const CACHE_NAME = 'learning-progress-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -7,6 +7,15 @@ const ASSETS = [
   './manifest.json',
   './icons/icon.svg',
 ];
+
+function isAppShell(url) {
+  return (
+    url.pathname.endsWith('.html') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('/')
+  );
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -27,19 +36,35 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request)
+  const url = new URL(event.request.url);
+  if (!url.origin.startsWith(self.location.origin)) return;
+
+  if (isAppShell(url)) {
+    event.respondWith(
+      fetch(event.request)
         .then((response) => {
-          if (response.ok && event.request.url.startsWith(self.location.origin)) {
+          if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() => cached);
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
-      return cached || fetchPromise;
-    })
+  event.respondWith(
+    caches.match(event.request).then(
+      (cached) =>
+        cached ||
+        fetch(event.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+    )
   );
 });

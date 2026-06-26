@@ -33,6 +33,10 @@
       </header>
 
       <main class="main">
+        <div class="update-banner" id="update-banner" hidden>
+          <span>发现新版本，请刷新以使用任务节点功能</span>
+          <button type="button" class="btn btn-primary btn-sm" id="reload-app-btn">立即刷新</button>
+        </div>
         <section class="stats-bar" id="stats-bar" aria-label="总览统计"></section>
 
         <section class="goals-section">
@@ -48,7 +52,7 @@
           <div class="empty-state" id="empty-state" hidden>
             <div class="empty-icon">🎯</div>
             <h3>还没有学习目标</h3>
-            <p>点击「新目标」开始记录你的学习旅程</p>
+            <p>创建目标后，添加任务节点来追踪每一步学习进度</p>
             <button type="button" class="btn btn-primary" id="empty-add-btn">创建第一个目标</button>
           </div>
         </section>
@@ -67,6 +71,14 @@
             <span>目标名称</span>
             <input type="text" name="title" required maxlength="60" placeholder="例如：Python 数据分析" />
           </label>
+          <div class="field full task-editor">
+            <div class="task-editor-head">
+              <span>任务节点</span>
+              <span class="task-editor-hint">按顺序添加学习步骤，勾选完成即推进进度</span>
+            </div>
+            <div class="task-input-list" id="goal-task-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm add-task-row-btn" id="add-task-row-btn">+ 添加任务节点</button>
+          </div>
           <label class="field full">
             <span>描述（可选）</span>
             <textarea name="description" rows="2" maxlength="200" placeholder="简要说明学习目标…"></textarea>
@@ -83,14 +95,6 @@
             <span>颜色标记</span>
             <input type="color" name="color" value="#3b82f6" />
           </label>
-          <div class="field full task-editor">
-            <div class="task-editor-head">
-              <span>任务节点</span>
-              <span class="task-editor-hint">按顺序添加学习步骤，完成节点即推进进度</span>
-            </div>
-            <div class="task-input-list" id="goal-task-list"></div>
-            <button type="button" class="btn btn-ghost btn-sm add-task-row-btn" id="add-task-row-btn">+ 添加任务节点</button>
-          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" id="delete-goal-btn" hidden>删除目标</button>

@@ -154,6 +154,31 @@ function renderStats() {
   `;
 }
 
+function renderTaskPreview(goal) {
+  if (goal.tasks.length === 0) {
+    return `<div class="card-no-tasks">还没有任务节点，点击下方「任务节点」添加</div>`;
+  }
+
+  const preview = goal.tasks.slice(0, 3);
+  const more = goal.tasks.length - preview.length;
+
+  return `
+    <div class="card-task-preview">
+      ${preview
+        .map(
+          (task) => `
+        <div class="card-task-item${task.completed ? ' done' : ''}">
+          <span class="card-task-dot" aria-hidden="true">${task.completed ? '✓' : '○'}</span>
+          <span>${escapeHtml(task.title)}</span>
+        </div>
+      `
+        )
+        .join('')}
+      ${more > 0 ? `<div class="card-task-more">还有 ${more} 个节点…</div>` : ''}
+    </div>
+  `;
+}
+
 function renderGoals() {
   const goals = filteredGoals();
   const grid = $('#goals-grid');
@@ -185,6 +210,7 @@ function renderGoals() {
             ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
           </div>
           ${goal.description ? `<p class="goal-desc">${escapeHtml(goal.description)}</p>` : ''}
+          ${renderTaskPreview(goal)}
           <div class="progress-wrap">
             <div class="progress-meta">
               <span>${formatProgress(goal)}</span>
@@ -202,7 +228,7 @@ function renderGoals() {
           <div class="goal-footer">
             ${dl ? `<span class="deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</span>` : '<span></span>'}
             <div class="card-actions">
-              <button type="button" class="btn btn-ghost btn-sm tasks-btn" data-id="${goal.id}">节点</button>
+              <button type="button" class="btn btn-primary btn-sm tasks-btn" data-id="${goal.id}">任务节点</button>
               <button type="button" class="btn btn-ghost btn-sm edit-btn" data-id="${goal.id}">编辑</button>
             </div>
           </div>
@@ -556,8 +582,21 @@ function bindEvents() {
 
 function setupPWA() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').then((reg) => {
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state === 'activated' && navigator.serviceWorker.controller) {
+            $('#update-banner').hidden = false;
+          }
+        });
+      });
+    }).catch(() => {});
   }
+
+  $('#reload-app-btn')?.addEventListener('click', () => {
+    window.location.reload();
+  });
 
   let deferredPrompt = null;
   const installBtn = $('#install-btn');
