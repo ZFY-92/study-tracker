@@ -5,12 +5,13 @@ const STORAGE_KEY = 'learning-progress-data';
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 
-/** @type {{ goals: Goal[], view: ViewName, filter: string, selectedGoalId: string | null }} */
+/** @type {{ goals: Goal[], view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null }} */
 let state = {
   goals: [],
   view: 'home',
   filter: 'all',
   selectedGoalId: null,
+  pinnedGoalId: null,
 };
 
 let editingGoalId = null;
@@ -82,14 +83,44 @@ function loadData() {
     if (raw) {
       const data = JSON.parse(raw);
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
+      state.pinnedGoalId = data.pinnedGoalId || null;
     }
   } catch {
     state.goals = [];
+    state.pinnedGoalId = null;
+  }
+
+  if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
+    state.pinnedGoalId = null;
   }
 }
 
 function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({ goals: state.goals }));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({ goals: state.goals, pinnedGoalId: state.pinnedGoalId })
+  );
+}
+
+function getPinnedGoal() {
+  if (!state.pinnedGoalId) return null;
+  return state.goals.find((g) => g.id === state.pinnedGoalId) || null;
+}
+
+function setPinnedGoal(goalId) {
+  if (state.pinnedGoalId === goalId) {
+    state.pinnedGoalId = null;
+    showToast('已取消首页展示');
+  } else {
+    state.pinnedGoalId = goalId;
+    showToast('已设为首页展示');
+  }
+  saveData();
+  render();
+}
+
+function getNextTask(goal) {
+  return goal.tasks.find((t) => !t.completed) || null;
 }
 
 function getTaskStats(goal) {
@@ -258,10 +289,6 @@ function renderHome() {
   const total = state.goals.length;
   const active = state.goals.filter((g) => !isCompleted(g)).length;
   const completed = state.goals.filter((g) => isCompleted(g)).length;
-  const doneTasks = state.goals.reduce(
-    (sum, g) => sum + g.tasks.filter((t) => t.completed).length,
-    0
-  );
 
   const cards = [
     { filter: 'all', icon: '🎯', title: '全部目标', desc: `${total} 个学习目标`, color: '#3b82f6' },
@@ -284,10 +311,61 @@ function renderHome() {
     )
     .join('');
 
-  $('#home-summary').innerHTML = `
-    <div class="summary-card">
-      <span class="summary-label">已完成节点</span>
-      <span class="summary-value">${doneTasks}</span>
+  renderHomeFeatured();
+}
+
+function renderHomeFeatured() {
+  const container = $('#home-featured');
+  const goal = getPinnedGoal();
+
+  if (!goal || !container) {
+    if (container) container.innerHTML = '';
+    return;
+  }
+
+  const { pct } = getTaskStats(goal);
+  const nextTask = getNextTask(goal);
+  const dl = formatDeadline(goal.deadline);
+  const pendingPreview = goal.tasks.filter((t) => !t.completed).slice(0, 3);
+
+  container.innerHTML = `
+    <div class="featured-section">
+      <div class="featured-head">
+        <h3 class="featured-title">首页展示</h3>
+        <button type="button" class="btn btn-ghost btn-sm unpin-btn" data-id="${goal.id}">取消展示</button>
+      </div>
+      <article class="featured-goal-card" data-id="${goal.id}" style="--goal-color:${goal.color}">
+        <div class="featured-goal-top">
+          <div>
+            <h4 class="goal-title">${escapeHtml(goal.title)}</h4>
+            ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
+          </div>
+          ${dl ? `<span class="deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</span>` : ''}
+        </div>
+        ${goal.description ? `<p class="goal-desc">${escapeHtml(goal.description)}</p>` : ''}
+        <div class="progress-wrap">
+          <div class="progress-meta">
+            <span>${formatProgress(goal)}</span>
+            <span>${pct}%</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+        </div>
+        ${
+          nextTask
+            ? `<p class="next-task">下一节点：${escapeHtml(nextTask.title)}</p>`
+            : goal.tasks.length === 0
+              ? `<p class="next-task muted">还没有任务节点</p>`
+              : `<p class="next-task done">全部节点已完成 🎉</p>`
+        }
+        ${
+          pendingPreview.length
+            ? `<div class="featured-task-preview">
+                ${pendingPreview.map((task) => `<span class="featured-task-chip">${escapeHtml(task.title)}</span>`).join('')}
+              </div>`
+            : ''
+        }
+        <p class="featured-enter">点击查看任务节点 →</p>
+      </article>
     </div>
   `;
 }
@@ -320,6 +398,8 @@ function renderGoals() {
       const { pct } = getTaskStats(goal);
       const done = isCompleted(goal);
       const dl = formatDeadline(goal.deadline);
+      const isPinned = state.pinnedGoalId === goal.id;
+      const showPin = state.filter === 'all';
 
       return `
         <article class="goal-card goal-card-compact${done ? ' completed' : ''}" data-id="${goal.id}" style="--goal-color:${goal.color}">
@@ -342,6 +422,11 @@ function renderGoals() {
           </div>
           <div class="goal-footer">
             ${dl ? `<span class="deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</span>` : '<span class="deadline muted">点击查看任务节点 →</span>'}
+            ${
+              showPin
+                ? `<button type="button" class="btn btn-ghost btn-sm pin-btn${isPinned ? ' pinned' : ''}" data-id="${goal.id}">${isPinned ? '★ 首页展示中' : '☆ 首页展示'}</button>`
+                : ''
+            }
           </div>
         </article>
       `;
@@ -383,9 +468,16 @@ function renderGoalDetail() {
   container.innerHTML = `
     <div class="detail-page" style="--goal-color:${goal.color}">
       <div class="detail-header">
-        ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
-        ${goal.description ? `<p class="detail-desc">${escapeHtml(goal.description)}</p>` : ''}
-        ${dl ? `<p class="detail-deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</p>` : ''}
+        <div class="detail-header-top">
+          <div>
+            ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
+            ${goal.description ? `<p class="detail-desc">${escapeHtml(goal.description)}</p>` : ''}
+            ${dl ? `<p class="detail-deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</p>` : ''}
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm pin-btn${state.pinnedGoalId === goal.id ? ' pinned' : ''}" data-id="${goal.id}">
+            ${state.pinnedGoalId === goal.id ? '★ 首页展示中' : '☆ 设为首页展示'}
+          </button>
+        </div>
       </div>
       <div class="detail-progress">
         <div class="progress-meta"><span>${formatProgress(goal)}</span><span>${pct}%</span></div>
@@ -585,6 +677,7 @@ function deleteGoal() {
   if (!confirm('确定删除这个目标及其所有任务节点吗？')) return;
 
   const wasDetail = state.view === 'goal-detail' && state.selectedGoalId === editingGoalId;
+  if (state.pinnedGoalId === editingGoalId) state.pinnedGoalId = null;
   state.goals = state.goals.filter((g) => g.id !== editingGoalId);
   saveData();
 
@@ -611,6 +704,17 @@ function bindEvents() {
   $('#nav-cards').addEventListener('click', (e) => {
     const card = e.target.closest('.nav-card');
     if (card) navigateToGoals(card.dataset.filter);
+  });
+
+  $('#home-featured').addEventListener('click', (e) => {
+    const unpinBtn = e.target.closest('.unpin-btn');
+    if (unpinBtn) {
+      e.stopPropagation();
+      setPinnedGoal(unpinBtn.dataset.id);
+      return;
+    }
+    const card = e.target.closest('.featured-goal-card');
+    if (card) navigateToGoalDetail(card.dataset.id);
   });
 
   $('#goal-form').addEventListener('submit', handleGoalSubmit);
@@ -662,6 +766,13 @@ function bindEvents() {
   });
 
   $('#goal-detail-body').addEventListener('click', (e) => {
+    const pinBtn = e.target.closest('.pin-btn');
+    if (pinBtn) {
+      e.stopPropagation();
+      setPinnedGoal(pinBtn.dataset.id);
+      return;
+    }
+
     const btn = e.target.closest('.delete-task-btn');
     if (!btn) return;
     if (!confirm('确定删除这个任务节点吗？')) return;
@@ -671,6 +782,7 @@ function bindEvents() {
   $('#goals-grid').addEventListener('click', (e) => {
     const moveUpBtn = e.target.closest('.move-up-btn');
     const moveDownBtn = e.target.closest('.move-down-btn');
+    const pinBtn = e.target.closest('.pin-btn');
     const editBtn = e.target.closest('.edit-btn');
     const card = e.target.closest('.goal-card');
 
@@ -682,6 +794,11 @@ function bindEvents() {
     if (moveDownBtn) {
       e.stopPropagation();
       moveGoalByOffset(moveDownBtn.dataset.id, 1);
+      return;
+    }
+    if (pinBtn) {
+      e.stopPropagation();
+      setPinnedGoal(pinBtn.dataset.id);
       return;
     }
     if (editBtn) {
