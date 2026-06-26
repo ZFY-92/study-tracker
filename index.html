@@ -18,14 +18,18 @@
     <div id="app">
       <header class="header">
         <div class="header-inner">
-          <div class="brand">
-            <div class="brand-icon" aria-hidden="true">📚</div>
-            <div>
-              <h1>学习进度</h1>
-              <p class="subtitle">用任务节点驱动每一次进步</p>
+          <div class="header-left">
+            <button type="button" class="btn btn-ghost back-btn" id="back-btn" hidden aria-label="返回">← 返回</button>
+            <div class="brand">
+              <div class="brand-icon" aria-hidden="true">📚</div>
+              <div>
+                <h1 id="page-title">学习进度</h1>
+                <p class="subtitle" id="page-subtitle">用任务节点驱动每一次进步</p>
+              </div>
             </div>
           </div>
           <div class="header-actions">
+            <button type="button" class="btn btn-ghost" id="edit-goal-header-btn" hidden>编辑</button>
             <button type="button" class="btn btn-ghost" id="install-btn" hidden>安装应用</button>
             <button type="button" class="btn btn-primary" id="add-goal-btn">+ 新目标</button>
           </div>
@@ -34,21 +38,23 @@
 
       <main class="main">
         <div class="update-banner" id="update-banner" hidden>
-          <span>发现新版本，请刷新以使用任务节点功能</span>
+          <span>发现新版本，请刷新以使用最新功能</span>
           <button type="button" class="btn btn-primary btn-sm" id="reload-app-btn">立即刷新</button>
         </div>
-        <section class="stats-bar" id="stats-bar" aria-label="总览统计"></section>
 
-        <section class="goals-section">
-          <div class="section-head">
-            <h2>我的目标</h2>
-            <div class="filter-tabs" role="tablist" aria-label="筛选目标">
-              <button type="button" class="filter-tab active" data-filter="all">全部</button>
-              <button type="button" class="filter-tab" data-filter="active">进行中</button>
-              <button type="button" class="filter-tab" data-filter="completed">已完成</button>
-            </div>
+        <!-- 首页：概览卡片 -->
+        <section class="view" id="view-home">
+          <h2 class="view-title">学习概览</h2>
+          <div class="nav-cards" id="nav-cards"></div>
+          <div class="home-summary" id="home-summary"></div>
+        </section>
+
+        <!-- 目标列表 -->
+        <section class="view" id="view-goals" hidden>
+          <div class="view-head">
+            <h2 class="view-title" id="goals-view-title">全部目标</h2>
+            <p class="sort-hint" id="sort-hint" hidden>拖动 ⋮⋮ 或点击 ↑ ↓ 调整顺序（仅「全部目标」）</p>
           </div>
-          <p class="sort-hint" id="sort-hint" hidden>拖动 ⋮⋮ 或点击 ↑ ↓ 调整首页展示顺序（仅在「全部」下可用）</p>
           <div class="goals-grid" id="goals-grid"></div>
           <div class="empty-state" id="empty-state" hidden>
             <div class="empty-icon">🎯</div>
@@ -56,6 +62,11 @@
             <p>创建目标后，添加任务节点来追踪每一步学习进度</p>
             <button type="button" class="btn btn-primary" id="empty-add-btn">创建第一个目标</button>
           </div>
+        </section>
+
+        <!-- 目标详情：任务节点 -->
+        <section class="view" id="view-goal-detail" hidden>
+          <div id="goal-detail-body"></div>
         </section>
       </main>
     </div>
@@ -105,17 +116,6 @@
           </div>
         </div>
       </form>
-    </dialog>
-
-    <!-- 目标详情弹窗 -->
-    <dialog class="modal modal-wide" id="detail-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3 id="detail-title"></h3>
-          <button type="button" class="icon-btn" id="close-detail-modal" aria-label="关闭">✕</button>
-        </div>
-        <div id="detail-body"></div>
-      </div>
     </dialog>
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>

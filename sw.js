@@ -1,4 +1,4 @@
-const CACHE_NAME = 'learning-progress-v5';
+const CACHE_NAME = 'learning-progress-v6';
 const ASSETS = [
   './',
   './index.html',
