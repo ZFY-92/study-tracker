@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'learning-progress-data';
 
-/** @typedef {{ id: string, date: string, amount: number, note: string }} LogEntry */
-/** @typedef {{ id: string, title: string, description: string, category: string, progressType: 'percent' | 'hours', target: number, current: number, deadline: string, color: string, completed: boolean, logs: LogEntry[], createdAt: string, updatedAt: string }} Goal */
+/** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
+/** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
 
 /** @type {{ goals: Goal[], filter: string }} */
 let state = {
@@ -10,8 +10,9 @@ let state = {
 };
 
 let editingGoalId = null;
-let loggingGoalId = null;
 let detailGoalId = null;
+/** @type {TaskNode[]} */
+let editingTasks = [];
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -24,12 +25,53 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function migrateGoal(goal) {
+  const base = {
+    id: goal.id || uid(),
+    title: goal.title || '',
+    description: goal.description || '',
+    category: goal.category || '',
+    deadline: goal.deadline || '',
+    color: goal.color || '#3b82f6',
+    tasks: Array.isArray(goal.tasks) ? goal.tasks : [],
+    createdAt: goal.createdAt || new Date().toISOString(),
+    updatedAt: goal.updatedAt || new Date().toISOString(),
+  };
+
+  if (base.tasks.length === 0 && (goal.progressType || goal.target != null)) {
+    const label =
+      goal.progressType === 'hours'
+        ? `完成 ${goal.target || 0} 小时学习目标`
+        : `完成 ${goal.target || 100}% 学习目标`;
+    base.tasks.push({
+      id: uid(),
+      title: label,
+      note: '',
+      completed: !!goal.completed || (goal.current >= goal.target),
+      completedAt: goal.completed ? goal.updatedAt || null : null,
+      createdAt: base.createdAt,
+    });
+  }
+
+  return {
+    ...base,
+    tasks: base.tasks.map((task) => ({
+      id: task.id || uid(),
+      title: task.title || '',
+      note: task.note || '',
+      completed: !!task.completed,
+      completedAt: task.completedAt || null,
+      createdAt: task.createdAt || base.createdAt,
+    })),
+  };
+}
+
 function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
-      state.goals = Array.isArray(data.goals) ? data.goals : [];
+      state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
     }
   } catch {
     state.goals = [];
@@ -40,21 +82,26 @@ function saveData() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({ goals: state.goals }));
 }
 
-function getProgress(goal) {
-  if (goal.target <= 0) return 0;
-  return Math.min(100, Math.round((goal.current / goal.target) * 100));
+function getTaskStats(goal) {
+  const total = goal.tasks.length;
+  const completed = goal.tasks.filter((t) => t.completed).length;
+  const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+  return { total, completed, pct };
 }
 
 function isCompleted(goal) {
-  return goal.completed || goal.current >= goal.target;
+  const { total, completed } = getTaskStats(goal);
+  return total > 0 && completed === total;
+}
+
+function getNextTask(goal) {
+  return goal.tasks.find((t) => !t.completed) || null;
 }
 
 function formatProgress(goal) {
-  const unit = goal.progressType === 'hours' ? '小时' : '%';
-  if (goal.progressType === 'percent') {
-    return `${goal.current}% / ${goal.target}%`;
-  }
-  return `${goal.current} / ${goal.target} ${unit}`;
+  const { total, completed } = getTaskStats(goal);
+  if (total === 0) return '尚未添加任务节点';
+  return `${completed} / ${total} 节点已完成`;
 }
 
 function formatDeadline(deadline) {
@@ -94,15 +141,16 @@ function renderStats() {
   const total = state.goals.length;
   const active = state.goals.filter((g) => !isCompleted(g)).length;
   const completed = state.goals.filter((g) => isCompleted(g)).length;
-  const totalHours = state.goals
-    .filter((g) => g.progressType === 'hours')
-    .reduce((sum, g) => sum + g.current, 0);
+  const doneTasks = state.goals.reduce(
+    (sum, g) => sum + g.tasks.filter((t) => t.completed).length,
+    0
+  );
 
   $('#stats-bar').innerHTML = `
     <div class="stat-card"><div class="stat-label">全部目标</div><div class="stat-value">${total}</div></div>
     <div class="stat-card"><div class="stat-label">进行中</div><div class="stat-value">${active}</div></div>
     <div class="stat-card"><div class="stat-label">已完成</div><div class="stat-value">${completed}</div></div>
-    <div class="stat-card"><div class="stat-label">累计学时</div><div class="stat-value">${totalHours}<span style="font-size:0.9rem;font-weight:400;color:var(--text-muted)"> h</span></div></div>
+    <div class="stat-card"><div class="stat-label">已完成节点</div><div class="stat-value">${doneTasks}</div></div>
   `;
 }
 
@@ -126,9 +174,10 @@ function renderGoals() {
 
   grid.innerHTML = goals
     .map((goal) => {
-      const pct = getProgress(goal);
+      const { pct } = getTaskStats(goal);
       const done = isCompleted(goal);
       const dl = formatDeadline(goal.deadline);
+      const nextTask = getNextTask(goal);
       return `
         <article class="goal-card${done ? ' completed' : ''}" data-id="${goal.id}" style="--goal-color:${goal.color}">
           <div class="goal-card-top">
@@ -143,10 +192,17 @@ function renderGoals() {
             </div>
             <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
           </div>
+          ${
+            nextTask
+              ? `<p class="next-task">下一节点：${escapeHtml(nextTask.title)}</p>`
+              : goal.tasks.length === 0
+                ? `<p class="next-task muted">添加任务节点后开始追踪</p>`
+                : `<p class="next-task done">全部节点已完成 🎉</p>`
+          }
           <div class="goal-footer">
             ${dl ? `<span class="deadline${dl.overdue ? ' overdue' : ''}">${dl.text}</span>` : '<span></span>'}
             <div class="card-actions">
-              <button type="button" class="btn btn-ghost btn-sm log-btn" data-id="${goal.id}">+ 记录</button>
+              <button type="button" class="btn btn-ghost btn-sm tasks-btn" data-id="${goal.id}">节点</button>
               <button type="button" class="btn btn-ghost btn-sm edit-btn" data-id="${goal.id}">编辑</button>
             </div>
           </div>
@@ -167,6 +223,26 @@ function render() {
   renderGoals();
 }
 
+function renderGoalTaskRows() {
+  const list = $('#goal-task-list');
+  if (editingTasks.length === 0) {
+    list.innerHTML = `<p class="task-empty-hint">还没有节点，点击下方按钮添加</p>`;
+    return;
+  }
+
+  list.innerHTML = editingTasks
+    .map(
+      (task, index) => `
+      <div class="task-row" data-id="${task.id}">
+        <span class="task-index">${index + 1}</span>
+        <input type="text" class="task-row-input" value="${escapeHtml(task.title)}" maxlength="80" placeholder="例如：看完第 3 章" />
+        <button type="button" class="icon-btn remove-task-row-btn" aria-label="删除节点">✕</button>
+      </div>
+    `
+    )
+    .join('');
+}
+
 function openGoalModal(goal = null) {
   editingGoalId = goal?.id ?? null;
   const form = $('#goal-form');
@@ -175,61 +251,60 @@ function openGoalModal(goal = null) {
   $('#goal-modal-title').textContent = goal ? '编辑目标' : '新建目标';
   $('#delete-goal-btn').hidden = !goal;
 
+  editingTasks = goal
+    ? goal.tasks.map((t) => ({ ...t }))
+    : [{ id: uid(), title: '', note: '', completed: false, completedAt: null, createdAt: new Date().toISOString() }];
+
   if (goal) {
     form.title.value = goal.title;
     form.description.value = goal.description;
     form.category.value = goal.category;
-    form.progressType.value = goal.progressType;
-    form.target.value = goal.target;
-    form.current.value = goal.current;
     form.deadline.value = goal.deadline;
     form.color.value = goal.color;
   } else {
     form.color.value = '#3b82f6';
-    form.target.value = form.progressType.value === 'percent' ? 100 : 50;
   }
 
-  updateTargetLabel();
+  renderGoalTaskRows();
   $('#goal-modal').showModal();
 }
 
-function updateTargetLabel() {
-  const type = $('#goal-form').progressType.value;
-  $('#target-label').textContent = type === 'hours' ? '目标时长（小时）' : '目标百分比（%）';
-  const targetInput = $('#goal-form').target;
-  if (type === 'percent') {
-    targetInput.max = 100;
-    if (+targetInput.value > 100) targetInput.value = 100;
-  } else {
-    targetInput.removeAttribute('max');
-  }
-}
+function collectTasksFromForm() {
+  const rows = $$('#goal-task-list .task-row');
+  const now = new Date().toISOString();
+  const existingMap = new Map(editingTasks.map((t) => [t.id, t]));
 
-function openLogModal(goalId) {
-  loggingGoalId = goalId;
-  const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return;
-
-  const form = $('#log-form');
-  form.reset();
-  form.date.value = todayStr();
-  form.amount.value = goal.progressType === 'hours' ? 1 : 5;
-
-  $('#log-modal-title').textContent = '记录学习';
-  $('#log-goal-name').textContent = goal.title;
-  $('#log-amount-label').textContent =
-    goal.progressType === 'hours' ? '本次学习（小时）' : '进度增量（%）';
-
-  $('#log-modal').showModal();
+  return [...rows]
+    .map((row) => {
+      const id = row.dataset.id;
+      const title = row.querySelector('.task-row-input').value.trim();
+      const existing = existingMap.get(id);
+      if (!title) return null;
+      return {
+        id,
+        title,
+        note: existing?.note || '',
+        completed: existing?.completed || false,
+        completedAt: existing?.completedAt || null,
+        createdAt: existing?.createdAt || now,
+      };
+    })
+    .filter(Boolean);
 }
 
 function openDetailModal(goalId) {
   detailGoalId = goalId;
-  const goal = state.goals.find((g) => g.id === goalId);
+  renderDetailModal();
+  $('#detail-modal').showModal();
+}
+
+function renderDetailModal() {
+  const goal = state.goals.find((g) => g.id === detailGoalId);
   if (!goal) return;
 
-  const pct = getProgress(goal);
-  const logs = [...goal.logs].sort((a, b) => b.date.localeCompare(a.date));
+  const { pct } = getTaskStats(goal);
+  const pending = goal.tasks.filter((t) => !t.completed);
+  const done = goal.tasks.filter((t) => t.completed);
 
   $('#detail-title').textContent = goal.title;
   $('#detail-body').innerHTML = `
@@ -241,43 +316,66 @@ function openDetailModal(goalId) {
       <div class="progress-meta"><span>${formatProgress(goal)}</span><span>${pct}%</span></div>
       <div class="progress-bar" style="margin-top:0.35rem"><div class="progress-fill" style="width:${pct}%"></div></div>
     </div>
-    <div class="log-list">
-      <h4>学习记录 (${logs.length})</h4>
+    <div class="task-panel">
+      <div class="task-panel-head">
+        <h4>任务节点</h4>
+        <span class="task-panel-count">${goal.tasks.length} 个</span>
+      </div>
+      <form class="detail-add-task" id="detail-add-task-form">
+        <input type="text" name="title" maxlength="80" placeholder="添加新任务节点…" required />
+        <button type="submit" class="btn btn-primary btn-sm">添加</button>
+      </form>
       ${
-        logs.length
-          ? logs
-              .map(
-                (log) => `
-            <div class="log-item">
-              <span class="log-date">${log.date}</span>
-              <span class="log-amount">+${log.amount}${goal.progressType === 'hours' ? 'h' : '%'}</span>
-              <span class="log-note">${escapeHtml(log.note || '—')}</span>
-            </div>
-          `
-              )
-              .join('')
-          : '<p class="no-logs">还没有学习记录，点击「+ 记录」开始吧</p>'
+        pending.length
+          ? `<div class="task-group">
+              <div class="task-group-label">待完成 (${pending.length})</div>
+              ${pending.map((task) => renderDetailTaskItem(goal, task)).join('')}
+            </div>`
+          : ''
       }
+      ${
+        done.length
+          ? `<div class="task-group">
+              <div class="task-group-label">已完成 (${done.length})</div>
+              ${done.map((task) => renderDetailTaskItem(goal, task)).join('')}
+            </div>`
+          : ''
+      }
+      ${goal.tasks.length === 0 ? '<p class="no-logs">还没有任务节点，在上方输入框添加第一个吧</p>' : ''}
     </div>
   `;
+}
 
-  $('#detail-modal').showModal();
+function renderDetailTaskItem(goal, task) {
+  return `
+    <div class="task-item${task.completed ? ' completed' : ''}" data-task-id="${task.id}">
+      <label class="task-check">
+        <input type="checkbox" class="task-toggle" data-goal-id="${goal.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <span class="task-checkmark"></span>
+      </label>
+      <div class="task-body">
+        <span class="task-title">${escapeHtml(task.title)}</span>
+        ${task.completed && task.completedAt ? `<span class="task-done-date">完成于 ${task.completedAt.slice(0, 10)}</span>` : ''}
+      </div>
+      <button type="button" class="icon-btn delete-task-btn" data-goal-id="${goal.id}" data-task-id="${task.id}" aria-label="删除节点">✕</button>
+    </div>
+  `;
 }
 
 function handleGoalSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const now = new Date().toISOString();
+  const tasks = collectTasksFromForm();
 
   const data = {
     title: form.title.value.trim(),
     description: form.description.value.trim(),
     category: form.category.value.trim(),
-    progressType: form.progressType.value,
-    target: Math.max(1, +form.target.value),
-    current: Math.max(0, +form.current.value),
     deadline: form.deadline.value,
     color: form.color.value,
+    tasks,
+    updatedAt: now,
   };
 
   if (editingGoalId) {
@@ -286,8 +384,6 @@ function handleGoalSubmit(e) {
       state.goals[idx] = {
         ...state.goals[idx],
         ...data,
-        completed: data.current >= data.target,
-        updatedAt: now,
       };
       showToast('目标已更新');
     }
@@ -295,10 +391,7 @@ function handleGoalSubmit(e) {
     state.goals.unshift({
       id: uid(),
       ...data,
-      completed: data.current >= data.target,
-      logs: [],
       createdAt: now,
-      updatedAt: now,
     });
     showToast('目标已创建');
   }
@@ -308,34 +401,59 @@ function handleGoalSubmit(e) {
   $('#goal-modal').close();
 }
 
-function handleLogSubmit(e) {
-  e.preventDefault();
-  const form = e.target;
-  const goal = state.goals.find((g) => g.id === loggingGoalId);
+function toggleTask(goalId, taskId, completed) {
+  const goal = state.goals.find((g) => g.id === goalId);
   if (!goal) return;
 
-  const amount = +form.amount.value;
-  const entry = {
-    id: uid(),
-    date: form.date.value,
-    amount,
-    note: form.note.value.trim(),
-  };
+  const task = goal.tasks.find((t) => t.id === taskId);
+  if (!task) return;
 
-  goal.logs.push(entry);
-  goal.current = Math.min(goal.target, goal.current + amount);
-  goal.completed = goal.current >= goal.target;
+  task.completed = completed;
+  task.completedAt = completed ? todayStr() : null;
   goal.updatedAt = new Date().toISOString();
 
   saveData();
   render();
-  $('#log-modal').close();
-  showToast(`已记录 +${amount}${goal.progressType === 'hours' ? ' 小时' : '%'}`);
+  if ($('#detail-modal').open) renderDetailModal();
+  showToast(completed ? '节点已完成' : '已标记为未完成');
+}
+
+function addTaskToGoal(goalId, title) {
+  const goal = state.goals.find((g) => g.id === goalId);
+  if (!goal || !title.trim()) return;
+
+  goal.tasks.push({
+    id: uid(),
+    title: title.trim(),
+    note: '',
+    completed: false,
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  goal.updatedAt = new Date().toISOString();
+
+  saveData();
+  render();
+  if ($('#detail-modal').open) renderDetailModal();
+  showToast('任务节点已添加');
+}
+
+function deleteTask(goalId, taskId) {
+  const goal = state.goals.find((g) => g.id === goalId);
+  if (!goal) return;
+
+  goal.tasks = goal.tasks.filter((t) => t.id !== taskId);
+  goal.updatedAt = new Date().toISOString();
+
+  saveData();
+  render();
+  if ($('#detail-modal').open) renderDetailModal();
+  showToast('任务节点已删除');
 }
 
 function deleteGoal() {
   if (!editingGoalId) return;
-  if (!confirm('确定删除这个目标及其所有记录吗？')) return;
+  if (!confirm('确定删除这个目标及其所有任务节点吗？')) return;
 
   state.goals = state.goals.filter((g) => g.id !== editingGoalId);
   saveData();
@@ -358,27 +476,70 @@ function bindEvents() {
   });
 
   $('#goal-form').addEventListener('submit', handleGoalSubmit);
-  $('#log-form').addEventListener('submit', handleLogSubmit);
 
-  $('#goal-form').progressType.addEventListener('change', updateTargetLabel);
+  $('#add-task-row-btn').addEventListener('click', () => {
+    editingTasks.push({
+      id: uid(),
+      title: '',
+      note: '',
+      completed: false,
+      completedAt: null,
+      createdAt: new Date().toISOString(),
+    });
+    renderGoalTaskRows();
+    const inputs = $$('#goal-task-list .task-row-input');
+    inputs[inputs.length - 1]?.focus();
+  });
+
+  $('#goal-task-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.remove-task-row-btn');
+    if (!btn) return;
+    const row = btn.closest('.task-row');
+    editingTasks = editingTasks.filter((t) => t.id !== row.dataset.id);
+    renderGoalTaskRows();
+  });
+
+  $('#goal-task-list').addEventListener('input', (e) => {
+    if (!e.target.classList.contains('task-row-input')) return;
+    const row = e.target.closest('.task-row');
+    const task = editingTasks.find((t) => t.id === row.dataset.id);
+    if (task) task.title = e.target.value;
+  });
 
   $('#close-goal-modal').addEventListener('click', () => $('#goal-modal').close());
   $('#cancel-goal-btn').addEventListener('click', () => $('#goal-modal').close());
   $('#delete-goal-btn').addEventListener('click', deleteGoal);
 
-  $('#close-log-modal').addEventListener('click', () => $('#log-modal').close());
-  $('#cancel-log-btn').addEventListener('click', () => $('#log-modal').close());
-
   $('#close-detail-modal').addEventListener('click', () => $('#detail-modal').close());
 
+  $('#detail-body').addEventListener('submit', (e) => {
+    if (e.target.id !== 'detail-add-task-form') return;
+    e.preventDefault();
+    const input = e.target.querySelector('input[name="title"]');
+    addTaskToGoal(detailGoalId, input.value);
+    input.value = '';
+  });
+
+  $('#detail-body').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('task-toggle')) return;
+    toggleTask(e.target.dataset.goalId, e.target.dataset.taskId, e.target.checked);
+  });
+
+  $('#detail-body').addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-task-btn');
+    if (!btn) return;
+    if (!confirm('确定删除这个任务节点吗？')) return;
+    deleteTask(btn.dataset.goalId, btn.dataset.taskId);
+  });
+
   $('#goals-grid').addEventListener('click', (e) => {
-    const logBtn = e.target.closest('.log-btn');
+    const tasksBtn = e.target.closest('.tasks-btn');
     const editBtn = e.target.closest('.edit-btn');
     const card = e.target.closest('.goal-card');
 
-    if (logBtn) {
+    if (tasksBtn) {
       e.stopPropagation();
-      openLogModal(logBtn.dataset.id);
+      openDetailModal(tasksBtn.dataset.id);
       return;
     }
     if (editBtn) {

@@ -22,7 +22,7 @@
             <div class="brand-icon" aria-hidden="true">📚</div>
             <div>
               <h1>学习进度</h1>
-              <p class="subtitle">追踪你的每一个目标</p>
+              <p class="subtitle">用任务节点驱动每一次进步</p>
             </div>
           </div>
           <div class="header-actions">
@@ -56,7 +56,7 @@
     </div>
 
     <!-- 目标编辑弹窗 -->
-    <dialog class="modal" id="goal-modal">
+    <dialog class="modal modal-wide" id="goal-modal">
       <form class="modal-content" id="goal-form">
         <div class="modal-header">
           <h3 id="goal-modal-title">新建目标</h3>
@@ -76,21 +76,6 @@
             <input type="text" name="category" maxlength="20" placeholder="编程 / 语言 / 考证" />
           </label>
           <label class="field">
-            <span>进度类型</span>
-            <select name="progressType">
-              <option value="percent">百分比</option>
-              <option value="hours">学习时长（小时）</option>
-            </select>
-          </label>
-          <label class="field">
-            <span id="target-label">目标值</span>
-            <input type="number" name="target" min="1" step="1" value="100" required />
-          </label>
-          <label class="field">
-            <span>当前进度</span>
-            <input type="number" name="current" min="0" step="0.5" value="0" />
-          </label>
-          <label class="field">
             <span>截止日期（可选）</span>
             <input type="date" name="deadline" />
           </label>
@@ -98,43 +83,20 @@
             <span>颜色标记</span>
             <input type="color" name="color" value="#3b82f6" />
           </label>
+          <div class="field full task-editor">
+            <div class="task-editor-head">
+              <span>任务节点</span>
+              <span class="task-editor-hint">按顺序添加学习步骤，完成节点即推进进度</span>
+            </div>
+            <div class="task-input-list" id="goal-task-list"></div>
+            <button type="button" class="btn btn-ghost btn-sm add-task-row-btn" id="add-task-row-btn">+ 添加任务节点</button>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-ghost" id="delete-goal-btn" hidden>删除目标</button>
           <div class="modal-footer-right">
             <button type="button" class="btn btn-ghost" id="cancel-goal-btn">取消</button>
             <button type="submit" class="btn btn-primary">保存</button>
-          </div>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- 记录学习弹窗 -->
-    <dialog class="modal" id="log-modal">
-      <form class="modal-content" id="log-form">
-        <div class="modal-header">
-          <h3 id="log-modal-title">记录学习</h3>
-          <button type="button" class="icon-btn" id="close-log-modal" aria-label="关闭">✕</button>
-        </div>
-        <p class="log-goal-name" id="log-goal-name"></p>
-        <div class="form-grid">
-          <label class="field">
-            <span>日期</span>
-            <input type="date" name="date" required />
-          </label>
-          <label class="field">
-            <span id="log-amount-label">进度增量</span>
-            <input type="number" name="amount" min="0.5" step="0.5" value="1" required />
-          </label>
-          <label class="field full">
-            <span>学习笔记（可选）</span>
-            <textarea name="note" rows="3" maxlength="300" placeholder="今天学了什么…"></textarea>
-          </label>
-        </div>
-        <div class="modal-footer">
-          <div class="modal-footer-right">
-            <button type="button" class="btn btn-ghost" id="cancel-log-btn">取消</button>
-            <button type="submit" class="btn btn-primary">保存记录</button>
           </div>
         </div>
       </form>
