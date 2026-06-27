@@ -1724,9 +1724,40 @@ body {
   color: var(--goal-color, var(--primary));
 }
 
+.today-task-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.today-task-source.carried {
+  background: #fef3c7;
+  color: #92400e;
+}
+
 .today-task-source.custom {
   background: var(--bg-hover);
   color: var(--text-muted);
+}
+
+.profile-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.profile-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.profile-toggle-text {
+  font-size: 0.9rem;
 }
 
 .import-modal-hint {

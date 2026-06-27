@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=18" />
+    <link rel="stylesheet" href="styles.css?v=19" />
     <title>学习进度</title>
   </head>
   <body>
@@ -131,6 +131,19 @@
             </article>
             <article class="profile-card">
               <div class="profile-card-head">
+                <span class="profile-card-icon" aria-hidden="true">🔁</span>
+                <div>
+                  <h3>任务结转</h3>
+                  <p class="profile-desc">打开应用时，将前一天未完成的任务自动加入今天</p>
+                </div>
+              </div>
+              <label class="profile-toggle">
+                <input type="checkbox" id="carry-over-toggle" checked />
+                <span class="profile-toggle-text">开启自动结转</span>
+              </label>
+            </article>
+            <article class="profile-card">
+              <div class="profile-card-head">
                 <span class="profile-card-icon" aria-hidden="true">📲</span>
                 <div>
                   <h3>安装应用</h3>
@@ -234,6 +247,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=18" type="module"></script>
+    <script src="app.js?v=19" type="module"></script>
   </body>
 </html>

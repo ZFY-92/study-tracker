@@ -1,15 +1,15 @@
-const APP_VERSION = '18';
+const APP_VERSION = '19';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
 /** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
-/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string }} DailyTask */
+/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string }} DailyTask */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'calendar' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -18,8 +18,10 @@ let state = {
   filter: 'all',
   selectedGoalId: null,
   pinnedGoalId: null,
-  selectedDailyDate: new Date().toISOString().slice(0, 10),
-  calendarMonth: new Date().toISOString().slice(0, 7),
+  selectedDailyDate: '',
+  calendarMonth: '',
+  carryOverDailyTasks: true,
+  lastRolloverDate: '',
 };
 
 let editingGoalId = null;
@@ -45,7 +47,14 @@ function uid() {
 }
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  return dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+function yesterdayStr() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
 }
 
 function migrateGoal(goal) {
@@ -97,12 +106,18 @@ function loadData() {
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
+      state.carryOverDailyTasks = data.carryOverDailyTasks !== false;
+      state.lastRolloverDate = data.lastRolloverDate || '';
     }
   } catch {
     state.goals = [];
     state.pinnedGoalId = null;
     state.dailyTasks = {};
+    state.carryOverDailyTasks = true;
+    state.lastRolloverDate = '';
   }
+
+  syncSelectedDailyDate();
 
   if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
     state.pinnedGoalId = null;
@@ -124,6 +139,7 @@ function migrateDailyTasks(raw) {
       source: task.source === 'goal' ? 'goal' : 'custom',
       goalId: task.goalId || undefined,
       taskId: task.taskId || undefined,
+      carriedFrom: task.carriedFrom || undefined,
     }));
   }
   return result;
@@ -136,8 +152,73 @@ function saveData() {
       goals: state.goals,
       pinnedGoalId: state.pinnedGoalId,
       dailyTasks: state.dailyTasks,
+      carryOverDailyTasks: state.carryOverDailyTasks,
+      lastRolloverDate: state.lastRolloverDate,
     })
   );
+}
+
+function syncSelectedDailyDate() {
+  const today = todayStr();
+  if (!state.selectedDailyDate || state.selectedDailyDate > today) {
+    state.selectedDailyDate = today;
+  }
+  state.calendarMonth = state.selectedDailyDate.slice(0, 7);
+}
+
+function isDuplicateDailyTask(tasks, task) {
+  return tasks.some((existing) => {
+    if (task.source === 'goal' && task.goalId && task.taskId) {
+      return existing.source === 'goal' && existing.goalId === task.goalId && existing.taskId === task.taskId;
+    }
+    return existing.source === 'custom' && existing.title.trim() === task.title.trim();
+  });
+}
+
+function rolloverIncompleteDailyTasks(options = {}) {
+  const { silent = false, force = false } = options;
+  const today = todayStr();
+
+  if (!state.carryOverDailyTasks) return 0;
+  if (!force && state.lastRolloverDate === today) return 0;
+
+  state.lastRolloverDate = today;
+
+  const yesterday = yesterdayStr();
+  const incomplete = (state.dailyTasks[yesterday] || []).filter((t) => !t.completed);
+
+  if (incomplete.length === 0) {
+    saveData();
+    return 0;
+  }
+
+  const todayTasks = ensureDailyTasks(today);
+  const now = new Date().toISOString();
+  let added = 0;
+
+  for (const task of incomplete) {
+    if (isDuplicateDailyTask(todayTasks, task)) continue;
+    todayTasks.push({
+      id: uid(),
+      title: task.title,
+      completed: false,
+      completedAt: null,
+      createdAt: now,
+      source: task.source,
+      goalId: task.goalId,
+      taskId: task.taskId,
+      carriedFrom: yesterday,
+    });
+    added += 1;
+  }
+
+  saveData();
+
+  if (added > 0 && !silent) {
+    showToast(`已将昨日 ${added} 条未完成任务加入今天`);
+  }
+
+  return added;
 }
 
 function getSelectedDailyDate() {
@@ -805,6 +886,9 @@ function renderTodayTaskItem(task) {
     task.source === 'goal'
       ? `<span class="today-task-source" style="--goal-color:${goal?.color || '#3b82f6'}">${escapeHtml(getGoalTitle(task.goalId))}</span>`
       : `<span class="today-task-source custom">自定义</span>`;
+  const carriedLabel = task.carriedFrom
+    ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
+    : '';
 
   return `
     <div class="today-task-item${task.completed ? ' completed' : ''}" data-id="${task.id}">
@@ -814,7 +898,7 @@ function renderTodayTaskItem(task) {
       </label>
       <div class="task-body">
         <span class="task-title">${escapeHtml(task.title)}</span>
-        ${sourceLabel}
+        <span class="today-task-tags">${sourceLabel}${carriedLabel}</span>
       </div>
       <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
     </div>
@@ -1031,6 +1115,9 @@ function renderProfile() {
       installHint.hidden = false;
     }
   }
+
+  const carryToggle = $('#carry-over-toggle');
+  if (carryToggle) carryToggle.checked = state.carryOverDailyTasks;
 }
 
 function render() {
@@ -1616,6 +1703,29 @@ function setupPWA() {
 
   $('#check-update-btn')?.addEventListener('click', () => checkForUpdates());
 
+  $('#carry-over-toggle')?.addEventListener('change', (e) => {
+    state.carryOverDailyTasks = e.target.checked;
+    saveData();
+    if (state.carryOverDailyTasks) {
+      const added = rolloverIncompleteDailyTasks({ force: true });
+      if (added > 0 && state.tab === 'today') render();
+      showToast(
+        added > 0 ? `已将昨日 ${added} 条未完成任务加入今天` : '已开启任务自动结转'
+      );
+    } else {
+      showToast('已关闭任务自动结转');
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const added = rolloverIncompleteDailyTasks({ silent: true });
+    if (added > 0) {
+      showToast(`已将昨日 ${added} 条未完成任务加入今天`);
+      if (state.tab === 'today' || state.tab === 'calendar') render();
+    }
+  });
+
   const installBtn = $('#install-btn');
   const profileInstallBtn = $('#profile-install-btn');
 
@@ -1648,6 +1758,7 @@ function setupPWA() {
 
 function init() {
   loadData();
+  rolloverIncompleteDailyTasks();
   bindEvents();
   setupPWA();
   render();
