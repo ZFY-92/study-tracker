@@ -2,12 +2,16 @@ const STORAGE_KEY = 'learning-progress-data';
 
 /** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
+/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string }} DailyTask */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
+/** @typedef {'learning' | 'today'} TabName */
 
-/** @type {{ goals: Goal[], view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null }} */
 let state = {
   goals: [],
+  dailyTasks: {},
+  tab: 'learning',
   view: 'home',
   filter: 'all',
   selectedGoalId: null,
@@ -84,10 +88,12 @@ function loadData() {
       const data = JSON.parse(raw);
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
+      state.dailyTasks = migrateDailyTasks(data.dailyTasks);
     }
   } catch {
     state.goals = [];
     state.pinnedGoalId = null;
+    state.dailyTasks = {};
   }
 
   if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
@@ -95,11 +101,140 @@ function loadData() {
   }
 }
 
+function migrateDailyTasks(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  /** @type {Record<string, DailyTask[]>} */
+  const result = {};
+  for (const [date, tasks] of Object.entries(raw)) {
+    if (!Array.isArray(tasks)) continue;
+    result[date] = tasks.map((task) => ({
+      id: task.id || uid(),
+      title: task.title || '',
+      completed: !!task.completed,
+      completedAt: task.completedAt || null,
+      createdAt: task.createdAt || new Date().toISOString(),
+      source: task.source === 'goal' ? 'goal' : 'custom',
+      goalId: task.goalId || undefined,
+      taskId: task.taskId || undefined,
+    }));
+  }
+  return result;
+}
+
 function saveData() {
   localStorage.setItem(
     STORAGE_KEY,
-    JSON.stringify({ goals: state.goals, pinnedGoalId: state.pinnedGoalId })
+    JSON.stringify({
+      goals: state.goals,
+      pinnedGoalId: state.pinnedGoalId,
+      dailyTasks: state.dailyTasks,
+    })
   );
+}
+
+function getTodayTasks() {
+  const date = todayStr();
+  if (!state.dailyTasks[date]) state.dailyTasks[date] = [];
+  return state.dailyTasks[date];
+}
+
+function formatTodayLabel() {
+  const d = new Date();
+  return d.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  });
+}
+
+function getDailyTaskStats() {
+  const tasks = getTodayTasks();
+  const total = tasks.length;
+  const completed = tasks.filter((t) => t.completed).length;
+  return { total, completed };
+}
+
+function isDailyTaskImported(goalId, taskId) {
+  return getTodayTasks().some((t) => t.source === 'goal' && t.goalId === goalId && t.taskId === taskId);
+}
+
+function addCustomDailyTask(title) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  getTodayTasks().push({
+    id: uid(),
+    title: trimmed,
+    completed: false,
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+    source: 'custom',
+  });
+  saveData();
+  renderToday();
+  showToast('已加入今日任务');
+}
+
+function importGoalTasks(items) {
+  const todayTasks = getTodayTasks();
+  let added = 0;
+
+  for (const { goalId, taskId, title } of items) {
+    if (isDailyTaskImported(goalId, taskId)) continue;
+    todayTasks.push({
+      id: uid(),
+      title,
+      completed: false,
+      completedAt: null,
+      createdAt: new Date().toISOString(),
+      source: 'goal',
+      goalId,
+      taskId,
+    });
+    added += 1;
+  }
+
+  if (added === 0) {
+    showToast('没有新任务可导入', 'info');
+    return;
+  }
+
+  saveData();
+  renderToday();
+  showToast(`已导入 ${added} 条任务`);
+}
+
+function toggleDailyTask(taskId, completed) {
+  const tasks = getTodayTasks();
+  const task = tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  task.completed = completed;
+  task.completedAt = completed ? todayStr() : null;
+
+  if (task.source === 'goal' && task.goalId && task.taskId) {
+    toggleTask(task.goalId, task.taskId, completed, { silent: true });
+  }
+
+  saveData();
+  renderToday();
+  showToast(completed ? '任务已完成' : '已标记为未完成');
+}
+
+function deleteDailyTask(taskId) {
+  const tasks = getTodayTasks();
+  const idx = tasks.findIndex((t) => t.id === taskId);
+  if (idx < 0) return;
+
+  tasks.splice(idx, 1);
+  saveData();
+  renderToday();
+  showToast('任务已删除');
+}
+
+function getGoalTitle(goalId) {
+  return state.goals.find((g) => g.id === goalId)?.title || '未知目标';
 }
 
 function getPinnedGoal() {
@@ -192,9 +327,15 @@ function canReorderGoals() {
 }
 
 function navigateTo(view, options = {}) {
+  state.tab = 'learning';
   state.view = view;
   if (options.filter) state.filter = options.filter;
   if (options.goalId !== undefined) state.selectedGoalId = options.goalId;
+  render();
+}
+
+function switchTab(tab) {
+  state.tab = tab;
   render();
 }
 
@@ -207,6 +348,7 @@ function navigateToGoalDetail(goalId) {
 }
 
 function goBack() {
+  if (state.tab !== 'learning') return;
   if (state.view === 'goal-detail') {
     navigateTo('goals');
     return;
@@ -267,6 +409,17 @@ function updateHeader() {
   const pageTitle = $('#page-title');
   const pageSubtitle = $('#page-subtitle');
 
+  if (state.tab === 'today') {
+    backBtn.hidden = true;
+    addBtn.hidden = true;
+    editBtn.hidden = true;
+    pageTitle.textContent = '今日任务';
+    const { completed, total } = getDailyTaskStats();
+    pageSubtitle.textContent = total === 0 ? '规划好今天要做的事' : `已完成 ${completed} / ${total}`;
+    pageSubtitle.hidden = false;
+    return;
+  }
+
   backBtn.hidden = state.view === 'home';
   addBtn.hidden = state.view === 'goal-detail';
   editBtn.hidden = state.view !== 'goal-detail';
@@ -286,10 +439,21 @@ function updateHeader() {
   }
 }
 
+function updateBottomNav() {
+  $$('.bottom-nav-item').forEach((btn) => {
+    const active = btn.dataset.tab === state.tab;
+    btn.classList.toggle('active', active);
+    if (active) btn.setAttribute('aria-current', 'page');
+    else btn.removeAttribute('aria-current');
+  });
+}
+
 function showActiveView() {
-  $('#view-home').hidden = state.view !== 'home';
-  $('#view-goals').hidden = state.view !== 'goals';
-  $('#view-goal-detail').hidden = state.view !== 'goal-detail';
+  const isLearning = state.tab === 'learning';
+  $('#view-home').hidden = !isLearning || state.view !== 'home';
+  $('#view-goals').hidden = !isLearning || state.view !== 'goals';
+  $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
+  $('#view-today').hidden = state.tab !== 'today';
 }
 
 function renderHome() {
@@ -545,9 +709,132 @@ function renderGoalDetail() {
   `;
 }
 
+function renderTodayTaskItem(task) {
+  const goal = task.source === 'goal' && task.goalId ? state.goals.find((g) => g.id === task.goalId) : null;
+  const sourceLabel =
+    task.source === 'goal'
+      ? `<span class="today-task-source" style="--goal-color:${goal?.color || '#3b82f6'}">${escapeHtml(getGoalTitle(task.goalId))}</span>`
+      : `<span class="today-task-source custom">自定义</span>`;
+
+  return `
+    <div class="today-task-item${task.completed ? ' completed' : ''}" data-id="${task.id}">
+      <label class="task-check">
+        <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <span class="task-checkmark"></span>
+      </label>
+      <div class="task-body">
+        <span class="task-title">${escapeHtml(task.title)}</span>
+        ${sourceLabel}
+      </div>
+      <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
+    </div>
+  `;
+}
+
+function renderToday() {
+  const tasks = getTodayTasks();
+  const { completed, total } = getDailyTaskStats();
+  const pending = tasks.filter((t) => !t.completed);
+  const done = tasks.filter((t) => t.completed);
+
+  const dateLabel = $('#today-date-label');
+  const badge = $('#today-progress-badge');
+  const list = $('#today-task-list');
+  const empty = $('#today-empty-state');
+
+  if (dateLabel) dateLabel.textContent = formatTodayLabel();
+  if (badge) {
+    badge.textContent = total === 0 ? '0 项' : `${completed}/${total}`;
+    badge.classList.toggle('all-done', total > 0 && completed === total);
+  }
+
+  if (tasks.length === 0) {
+    if (list) list.innerHTML = '';
+    if (empty) empty.hidden = false;
+    return;
+  }
+
+  if (empty) empty.hidden = true;
+  if (list) {
+    list.innerHTML = `
+      ${
+        pending.length
+          ? `<div class="task-group">
+              <div class="task-group-label">待完成 (${pending.length})</div>
+              ${pending.map((task) => renderTodayTaskItem(task)).join('')}
+            </div>`
+          : ''
+      }
+      ${
+        done.length
+          ? `<div class="task-group">
+              <div class="task-group-label">已完成 (${done.length})</div>
+              ${done.map((task) => renderTodayTaskItem(task)).join('')}
+            </div>`
+          : ''
+      }
+    `;
+  }
+}
+
+function renderImportModal() {
+  const container = $('#import-goal-list');
+  if (!container) return;
+
+  const importableGoals = state.goals
+    .map((goal) => ({
+      goal,
+      tasks: goal.tasks.filter((t) => !t.completed),
+    }))
+    .filter(({ tasks }) => tasks.length > 0);
+
+  if (state.goals.length === 0) {
+    container.innerHTML = `<p class="no-logs">还没有学习目标，先去创建一个吧</p>`;
+    return;
+  }
+
+  if (importableGoals.length === 0) {
+    container.innerHTML = `<p class="no-logs">所有目标的待办节点都已完成，或尚未添加任务节点</p>`;
+    return;
+  }
+
+  container.innerHTML = importableGoals
+    .map(({ goal, tasks }) => {
+      const items = tasks
+        .map((task) => {
+          const imported = isDailyTaskImported(goal.id, task.id);
+          return `
+            <label class="import-task-item${imported ? ' imported' : ''}">
+              <input type="checkbox" class="import-task-check" value="${task.id}" data-goal-id="${goal.id}" ${imported ? 'disabled checked' : ''} />
+              <span class="import-task-title">${escapeHtml(task.title)}</span>
+              ${imported ? '<span class="import-task-tag">已导入</span>' : ''}
+            </label>
+          `;
+        })
+        .join('');
+
+      return `
+        <div class="import-goal-block" style="--goal-color:${goal.color}">
+          <div class="import-goal-head">
+            <h4>${escapeHtml(goal.title)}</h4>
+            ${goal.category ? `<span class="goal-category">${escapeHtml(goal.category)}</span>` : ''}
+          </div>
+          <div class="import-task-list">${items}</div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
 function render() {
   updateHeader();
+  updateBottomNav();
   showActiveView();
+
+  if (state.tab === 'today') {
+    renderToday();
+    return;
+  }
 
   if (state.view === 'home') renderHome();
   if (state.view === 'goals') renderGoals();
@@ -572,6 +859,31 @@ function renderGoalTaskRows() {
     `
     )
     .join('');
+}
+
+function openImportModal() {
+  renderImportModal();
+  $('#import-modal').showModal();
+}
+
+function handleImportConfirm() {
+  const checks = $$('#import-goal-list .import-task-check:checked:not(:disabled)');
+  const items = [...checks]
+    .map((el) => {
+      const goal = state.goals.find((g) => g.id === el.dataset.goalId);
+      const task = goal?.tasks.find((t) => t.id === el.value);
+      if (!task) return null;
+      return { goalId: el.dataset.goalId, taskId: el.value, title: task.title };
+    })
+    .filter(Boolean);
+
+  if (items.length === 0) {
+    showToast('请先选择要导入的任务');
+    return;
+  }
+
+  importGoalTasks(items);
+  $('#import-modal').close();
 }
 
 function openGoalModal(goal = null) {
@@ -656,7 +968,7 @@ function handleGoalSubmit(e) {
   $('#goal-modal').close();
 }
 
-function toggleTask(goalId, taskId, completed) {
+function toggleTask(goalId, taskId, completed, options = {}) {
   const goal = state.goals.find((g) => g.id === goalId);
   if (!goal) return;
 
@@ -668,8 +980,10 @@ function toggleTask(goalId, taskId, completed) {
   goal.updatedAt = new Date().toISOString();
 
   saveData();
-  render();
-  showToast(completed ? '节点已完成' : '已标记为未完成');
+  if (!options.silent) {
+    render();
+    showToast(completed ? '节点已完成' : '已标记为未完成');
+  }
 }
 
 function addTaskToGoal(goalId, title) {
@@ -723,6 +1037,37 @@ function deleteGoal() {
 }
 
 function bindEvents() {
+  $('#bottom-nav').addEventListener('click', (e) => {
+    const btn = e.target.closest('.bottom-nav-item');
+    if (!btn || btn.dataset.tab === state.tab) return;
+    switchTab(btn.dataset.tab);
+  });
+
+  $('#today-add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = e.target.querySelector('input[name="title"]');
+    addCustomDailyTask(input.value);
+    input.value = '';
+    input.focus();
+  });
+
+  $('#today-task-list').addEventListener('change', (e) => {
+    if (!e.target.classList.contains('today-task-toggle')) return;
+    toggleDailyTask(e.target.dataset.id, e.target.checked);
+  });
+
+  $('#today-task-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('.delete-today-task-btn');
+    if (!btn) return;
+    if (!confirm('确定从今日任务中删除这条吗？')) return;
+    deleteDailyTask(btn.dataset.id);
+  });
+
+  $('#open-import-modal-btn').addEventListener('click', openImportModal);
+  $('#confirm-import-btn').addEventListener('click', handleImportConfirm);
+  $('#close-import-modal').addEventListener('click', () => $('#import-modal').close());
+  $('#cancel-import-btn').addEventListener('click', () => $('#import-modal').close());
+
   $('#back-btn').addEventListener('click', goBack);
   $('#add-goal-btn').addEventListener('click', () => openGoalModal());
   $('#empty-add-btn').addEventListener('click', () => openGoalModal());

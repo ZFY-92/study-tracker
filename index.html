@@ -68,7 +68,42 @@
         <section class="view" id="view-goal-detail" hidden>
           <div id="goal-detail-body"></div>
         </section>
+
+        <!-- 今日任务 -->
+        <section class="view" id="view-today" hidden>
+          <div class="today-head">
+            <div>
+              <h2 class="view-title">今日任务</h2>
+              <p class="today-date" id="today-date-label"></p>
+            </div>
+            <div class="today-progress-badge" id="today-progress-badge"></div>
+          </div>
+          <div class="today-actions">
+            <form class="today-add-form" id="today-add-form">
+              <input type="text" name="title" maxlength="80" placeholder="写一条今天要做的任务…" required />
+              <button type="submit" class="btn btn-primary btn-sm">添加</button>
+            </form>
+            <button type="button" class="btn btn-ghost btn-sm" id="open-import-modal-btn">从目标导入</button>
+          </div>
+          <div class="today-task-list" id="today-task-list"></div>
+          <div class="empty-state" id="today-empty-state" hidden>
+            <div class="empty-icon">📝</div>
+            <h3>今天还没有任务</h3>
+            <p>手动添加，或从学习目标里导入任务节点</p>
+          </div>
+        </section>
       </main>
+
+      <nav class="bottom-nav" id="bottom-nav" aria-label="主导航">
+        <button type="button" class="bottom-nav-item active" data-tab="learning" aria-current="page">
+          <span class="bottom-nav-icon" aria-hidden="true">📚</span>
+          <span>学习</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-tab="today">
+          <span class="bottom-nav-icon" aria-hidden="true">📋</span>
+          <span>今日任务</span>
+        </button>
+      </nav>
     </div>
 
     <!-- 目标编辑弹窗 -->
@@ -116,6 +151,24 @@
           </div>
         </div>
       </form>
+    </dialog>
+
+    <!-- 从目标导入弹窗 -->
+    <dialog class="modal modal-wide" id="import-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>从目标导入任务</h3>
+          <button type="button" class="icon-btn" id="close-import-modal" aria-label="关闭">✕</button>
+        </div>
+        <p class="import-modal-hint">选择学习目标中的任务节点，加入今天的待办列表</p>
+        <div class="import-goal-list" id="import-goal-list"></div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="cancel-import-btn">取消</button>
+            <button type="button" class="btn btn-primary" id="confirm-import-btn">导入选中</button>
+          </div>
+        </div>
+      </div>
     </dialog>
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
