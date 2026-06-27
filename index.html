@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=14" />
+    <link rel="stylesheet" href="styles.css?v=15" />
     <title>学习进度</title>
   </head>
   <body>
@@ -203,28 +203,29 @@
       </form>
     </dialog>
 
-    <!-- 从目标导入弹窗 -->
-    <dialog class="modal modal-wide" id="import-modal">
-      <div class="modal-content import-modal-panel">
-        <div class="import-modal-top">
+    <!-- 从目标导入（自定义遮罩，避免 dialog 滚动问题） -->
+    <div class="import-overlay" id="import-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="import-overlay-title">
+      <button type="button" class="import-overlay-backdrop" id="import-overlay-backdrop" aria-label="关闭"></button>
+      <div class="import-sheet">
+        <div class="import-sheet-sticky-top">
           <div class="modal-header">
-            <h3>从目标导入任务</h3>
+            <h3 id="import-overlay-title">从目标导入任务</h3>
             <button type="button" class="icon-btn" id="close-import-modal" aria-label="关闭">✕</button>
           </div>
           <p class="import-modal-hint">选择学习目标中的任务节点，加入今天的待办列表</p>
         </div>
         <div class="import-goal-list" id="import-goal-list"></div>
-        <div class="modal-footer import-modal-footer">
+        <div class="import-sheet-sticky-bottom import-modal-footer">
           <div class="modal-footer-right">
             <button type="button" class="btn btn-ghost" id="cancel-import-btn">取消</button>
             <button type="button" class="btn btn-primary" id="confirm-import-btn">导入选中</button>
           </div>
         </div>
       </div>
-    </dialog>
+    </div>
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=14" type="module"></script>
+    <script src="app.js?v=15" type="module"></script>
   </body>
 </html>

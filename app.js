@@ -1,4 +1,4 @@
-const APP_VERSION = '14';
+const APP_VERSION = '15';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -1050,27 +1050,19 @@ function renderGoalTaskRows() {
     .join('');
 }
 
-function syncImportListHeight() {
-  const panel = $('#import-modal .import-modal-panel');
-  const list = $('#import-goal-list');
-  if (!panel || !list) return;
-
-  const top = panel.querySelector('.import-modal-top');
-  const footer = panel.querySelector('.import-modal-footer');
-  if (!top || !footer) return;
-
-  const available = panel.clientHeight - top.offsetHeight - footer.offsetHeight;
-  if (available > 0) {
-    list.style.height = `${available}px`;
-    list.style.maxHeight = `${available}px`;
-  }
+function closeImportOverlay() {
+  const overlay = $('#import-overlay');
+  if (overlay) overlay.hidden = true;
+  document.body.style.overflow = '';
 }
 
 function openImportModal() {
   renderImportModal();
-  const modal = $('#import-modal');
-  modal.showModal();
-  requestAnimationFrame(syncImportListHeight);
+  const overlay = $('#import-overlay');
+  if (!overlay) return;
+  overlay.hidden = false;
+  document.body.style.overflow = 'hidden';
+  overlay.querySelector('.import-sheet')?.scrollTo(0, 0);
 }
 
 function handleImportConfirm() {
@@ -1090,7 +1082,7 @@ function handleImportConfirm() {
   }
 
   importGoalTasks(items);
-  $('#import-modal').close();
+  closeImportOverlay();
 }
 
 function openGoalModal(goal = null) {
@@ -1303,12 +1295,14 @@ function bindEvents() {
   });
 
   $('#open-import-modal-btn').addEventListener('click', openImportModal);
-  window.addEventListener('resize', () => {
-    if ($('#import-modal')?.open) syncImportListHeight();
-  });
+  $('#import-overlay-backdrop').addEventListener('click', closeImportOverlay);
+  $('#close-import-modal').addEventListener('click', closeImportOverlay);
+  $('#cancel-import-btn').addEventListener('click', closeImportOverlay);
   $('#confirm-import-btn').addEventListener('click', handleImportConfirm);
-  $('#close-import-modal').addEventListener('click', () => $('#import-modal').close());
-  $('#cancel-import-btn').addEventListener('click', () => $('#import-modal').close());
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#import-overlay')?.hidden) closeImportOverlay();
+  });
 
   $('#back-btn').addEventListener('click', goBack);
   $('#add-goal-btn').addEventListener('click', () => openGoalModal());
