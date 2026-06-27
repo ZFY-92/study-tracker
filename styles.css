@@ -835,6 +835,29 @@ body {
   width: min(640px, calc(100vw - 2rem));
 }
 
+#import-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#import-modal .modal-header,
+#import-modal .import-modal-hint,
+#import-modal .modal-footer {
+  flex-shrink: 0;
+}
+
+#import-modal .import-goal-list {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: 0.5rem;
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -1372,8 +1395,6 @@ body {
 
 .import-goal-list {
   padding: 0 1.25rem;
-  max-height: min(50vh, 420px);
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
