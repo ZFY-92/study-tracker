@@ -1,4 +1,4 @@
-const APP_VERSION = '16';
+const APP_VERSION = '17';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -9,18 +9,20 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, calendarExpanded: boolean }} */
+/** @typedef {'tasks' | 'calendar'} TodaySubview */
+
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, todaySubview: TodaySubview, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
 let state = {
   goals: [],
   dailyTasks: {},
   tab: 'learning',
   view: 'home',
+  todaySubview: 'tasks',
   filter: 'all',
   selectedGoalId: null,
   pinnedGoalId: null,
   selectedDailyDate: new Date().toISOString().slice(0, 10),
   calendarMonth: new Date().toISOString().slice(0, 7),
-  calendarExpanded: false,
 };
 
 let editingGoalId = null;
@@ -98,7 +100,6 @@ function loadData() {
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
-      state.calendarExpanded = !!data.calendarExpanded;
     }
   } catch {
     state.goals = [];
@@ -138,7 +139,6 @@ function saveData() {
       goals: state.goals,
       pinnedGoalId: state.pinnedGoalId,
       dailyTasks: state.dailyTasks,
-      calendarExpanded: state.calendarExpanded,
     })
   );
 }
@@ -151,10 +151,19 @@ function isTodaySelected() {
   return getSelectedDailyDate() === todayStr();
 }
 
+function countDaysWithTasks() {
+  return Object.keys(state.dailyTasks).filter((d) => state.dailyTasks[d]?.length > 0).length;
+}
+
+function navigateToday(subview) {
+  state.todaySubview = subview;
+  render();
+}
+
 function setSelectedDailyDate(dateStr) {
   state.selectedDailyDate = dateStr;
   state.calendarMonth = dateStr.slice(0, 7);
-  renderToday();
+  render();
   updateHeader();
 }
 
@@ -179,12 +188,6 @@ function dateStrFromParts(year, month, day) {
 function formatDateShort(dateStr) {
   const d = parseDateStr(dateStr);
   return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
-}
-
-function toggleCalendarExpanded() {
-  state.calendarExpanded = !state.calendarExpanded;
-  saveData();
-  renderToday();
 }
 
 function formatDateLabel(dateStr) {
@@ -399,9 +402,13 @@ function navigateTo(view, options = {}) {
 
 function switchTab(tab) {
   state.tab = tab;
-  if (tab === 'today' && state.selectedDailyDate > todayStr()) {
-    state.selectedDailyDate = todayStr();
-    state.calendarMonth = todayStr().slice(0, 7);
+  if (tab === 'today') {
+    if (state.selectedDailyDate > todayStr()) {
+      state.selectedDailyDate = todayStr();
+      state.calendarMonth = todayStr().slice(0, 7);
+    }
+  } else {
+    state.todaySubview = 'tasks';
   }
   render();
 }
@@ -415,6 +422,10 @@ function navigateToGoalDetail(goalId) {
 }
 
 function goBack() {
+  if (state.tab === 'today' && state.todaySubview === 'calendar') {
+    navigateToday('tasks');
+    return;
+  }
   if (state.tab !== 'learning') return;
   if (state.view === 'goal-detail') {
     navigateTo('goals');
@@ -477,13 +488,22 @@ function updateHeader() {
   const pageSubtitle = $('#page-subtitle');
 
   if (state.tab === 'today') {
-    backBtn.hidden = true;
     addBtn.hidden = true;
     editBtn.hidden = true;
     const selected = getSelectedDailyDate();
     const isToday = isTodaySelected();
-    pageTitle.textContent = isToday ? '今日任务' : '任务记录';
     const { completed, total } = getDailyTaskStatsForDate(selected);
+
+    if (state.todaySubview === 'calendar') {
+      backBtn.hidden = false;
+      pageTitle.textContent = '任务日历';
+      pageSubtitle.textContent = formatDateLabel(selected);
+      pageSubtitle.hidden = false;
+      return;
+    }
+
+    backBtn.hidden = true;
+    pageTitle.textContent = isToday ? '今日任务' : '任务记录';
     pageSubtitle.textContent = total === 0
       ? (isToday ? '规划好今天要做的事' : formatDateLabel(selected))
       : `${isToday ? '今天' : formatDateLabel(selected)} · 已完成 ${completed} / ${total}`;
@@ -534,7 +554,8 @@ function showActiveView() {
   $('#view-home').hidden = !isLearning || state.view !== 'home';
   $('#view-goals').hidden = !isLearning || state.view !== 'goals';
   $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
-  $('#view-today').hidden = state.tab !== 'today';
+  $('#view-today').hidden = state.tab !== 'today' || state.todaySubview !== 'tasks';
+  $('#view-today-calendar').hidden = state.tab !== 'today' || state.todaySubview !== 'calendar';
   $('#view-profile').hidden = state.tab !== 'profile';
 }
 
@@ -858,29 +879,43 @@ function renderDailyCalendar() {
   }
 
   container.innerHTML = `
-    <div class="daily-calendar${state.calendarExpanded ? ' expanded' : ' collapsed'}">
-      <button type="button" class="calendar-toggle" aria-expanded="${state.calendarExpanded}">
-        <span class="calendar-toggle-left">
-          <span class="calendar-toggle-title">任务日历</span>
-          <span class="calendar-toggle-summary">${escapeHtml(formatDateShort(selected))}</span>
-        </span>
-        <span class="calendar-chevron" aria-hidden="true">${state.calendarExpanded ? '▲' : '▼'}</span>
-      </button>
-      <div class="calendar-body" ${state.calendarExpanded ? '' : 'hidden'}>
-        <div class="calendar-nav">
-          <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
-          <span class="calendar-month-label">${monthLabel}</span>
-          <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
-        </div>
-        <div class="calendar-weekdays">${weekdayHtml}</div>
-        <div class="calendar-grid">${cells}</div>
+    <div class="daily-calendar daily-calendar-page">
+      <div class="calendar-nav">
+        <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
+        <span class="calendar-month-label">${monthLabel}</span>
+        <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
       </div>
+      <div class="calendar-weekdays">${weekdayHtml}</div>
+      <div class="calendar-grid">${cells}</div>
     </div>
   `;
 }
 
-function renderToday() {
-  renderDailyCalendar();
+function renderTodayNavCard() {
+  const container = $('#today-nav-card');
+  if (!container) return;
+
+  const selected = getSelectedDailyDate();
+  const isToday = isTodaySelected();
+  const daysWithTasks = countDaysWithTasks();
+  const desc = isToday
+    ? `查看历史任务 · ${daysWithTasks} 天有记录`
+    : `当前 ${formatDateShort(selected)} · ${daysWithTasks} 天有记录`;
+
+  container.innerHTML = `
+    <button type="button" class="nav-card" data-today-nav="calendar" style="--nav-color:#8b5cf6">
+      <div class="nav-card-icon">📅</div>
+      <div class="nav-card-body">
+        <h3>任务日历</h3>
+        <p>${escapeHtml(desc)}</p>
+      </div>
+      <span class="nav-card-arrow" aria-hidden="true">→</span>
+    </button>
+  `;
+}
+
+function renderTodayTasks() {
+  renderTodayNavCard();
 
   const selected = getSelectedDailyDate();
   const isToday = isTodaySelected();
@@ -946,6 +981,18 @@ function renderToday() {
       }
     `;
   }
+}
+
+function renderTodayCalendar() {
+  renderDailyCalendar();
+}
+
+function renderToday() {
+  if (state.todaySubview === 'calendar') {
+    renderTodayCalendar();
+    return;
+  }
+  renderTodayTasks();
 }
 
 function renderImportModal() {
@@ -1272,16 +1319,16 @@ function bindEvents() {
     input.focus();
   });
 
+  $('#today-nav-card').addEventListener('click', (e) => {
+    const card = e.target.closest('[data-today-nav="calendar"]');
+    if (card) navigateToday('calendar');
+  });
+
   $('#today-calendar-wrap').addEventListener('click', (e) => {
-    const toggleBtn = e.target.closest('.calendar-toggle');
     const prevBtn = e.target.closest('.calendar-prev-btn');
     const nextBtn = e.target.closest('.calendar-next-btn');
     const dayBtn = e.target.closest('.calendar-day:not(.empty):not(.future)');
 
-    if (toggleBtn) {
-      toggleCalendarExpanded();
-      return;
-    }
     if (prevBtn) {
       const [year, month] = state.calendarMonth.split('-').map(Number);
       const d = new Date(year, month - 2, 1);
@@ -1301,7 +1348,9 @@ function bindEvents() {
     }
 
     if (dayBtn?.dataset.date) {
-      setSelectedDailyDate(dayBtn.dataset.date);
+      state.selectedDailyDate = dayBtn.dataset.date;
+      state.calendarMonth = dayBtn.dataset.date.slice(0, 7);
+      navigateToday('tasks');
     }
   });
 
