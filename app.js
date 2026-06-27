@@ -1,4 +1,4 @@
-const APP_VERSION = '13';
+const APP_VERSION = '14';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -1050,9 +1050,27 @@ function renderGoalTaskRows() {
     .join('');
 }
 
+function syncImportListHeight() {
+  const panel = $('#import-modal .import-modal-panel');
+  const list = $('#import-goal-list');
+  if (!panel || !list) return;
+
+  const top = panel.querySelector('.import-modal-top');
+  const footer = panel.querySelector('.import-modal-footer');
+  if (!top || !footer) return;
+
+  const available = panel.clientHeight - top.offsetHeight - footer.offsetHeight;
+  if (available > 0) {
+    list.style.height = `${available}px`;
+    list.style.maxHeight = `${available}px`;
+  }
+}
+
 function openImportModal() {
   renderImportModal();
-  $('#import-modal').showModal();
+  const modal = $('#import-modal');
+  modal.showModal();
+  requestAnimationFrame(syncImportListHeight);
 }
 
 function handleImportConfirm() {
@@ -1285,6 +1303,9 @@ function bindEvents() {
   });
 
   $('#open-import-modal-btn').addEventListener('click', openImportModal);
+  window.addEventListener('resize', () => {
+    if ($('#import-modal')?.open) syncImportListHeight();
+  });
   $('#confirm-import-btn').addEventListener('click', handleImportConfirm);
   $('#close-import-modal').addEventListener('click', () => $('#import-modal').close());
   $('#cancel-import-btn').addEventListener('click', () => $('#import-modal').close());
