@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
     <title>学习进度</title>
   </head>
   <body>
@@ -103,6 +103,41 @@
             <p>手动添加，或从学习目标里导入任务节点</p>
           </div>
         </section>
+
+        <!-- 我的 -->
+        <section class="view" id="view-profile" hidden>
+          <div class="profile-cards">
+            <article class="profile-card">
+              <div class="profile-card-head">
+                <span class="profile-card-icon" aria-hidden="true">🔄</span>
+                <div>
+                  <h3>版本更新</h3>
+                  <p class="profile-desc">检查是否已加载最新功能</p>
+                </div>
+              </div>
+              <div class="profile-version-row">
+                <span class="profile-version-label">当前版本</span>
+                <span class="profile-version" id="profile-version"></span>
+              </div>
+              <p class="profile-version-status" id="version-status">点击下方按钮检查更新</p>
+              <div class="profile-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="check-update-btn">检查更新</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="profile-reload-btn" hidden>立即刷新</button>
+              </div>
+            </article>
+            <article class="profile-card">
+              <div class="profile-card-head">
+                <span class="profile-card-icon" aria-hidden="true">📲</span>
+                <div>
+                  <h3>安装应用</h3>
+                  <p class="profile-desc">添加到桌面，支持离线访问</p>
+                </div>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" id="profile-install-btn" hidden>安装到桌面</button>
+              <p class="profile-install-hint" id="profile-install-hint">当前浏览器暂不支持安装，可用 Safari / Chrome 打开</p>
+            </article>
+          </div>
+        </section>
       </main>
 
       <nav class="bottom-nav" id="bottom-nav" aria-label="主导航">
@@ -113,6 +148,10 @@
         <button type="button" class="bottom-nav-item" data-tab="today">
           <span class="bottom-nav-icon" aria-hidden="true">📋</span>
           <span>今日任务</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-tab="profile">
+          <span class="bottom-nav-icon" aria-hidden="true">👤</span>
+          <span>我的</span>
         </button>
       </nav>
     </div>
@@ -166,14 +205,16 @@
 
     <!-- 从目标导入弹窗 -->
     <dialog class="modal modal-wide" id="import-modal">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>从目标导入任务</h3>
-          <button type="button" class="icon-btn" id="close-import-modal" aria-label="关闭">✕</button>
+      <div class="modal-content import-modal-panel">
+        <div class="import-modal-top">
+          <div class="modal-header">
+            <h3>从目标导入任务</h3>
+            <button type="button" class="icon-btn" id="close-import-modal" aria-label="关闭">✕</button>
+          </div>
+          <p class="import-modal-hint">选择学习目标中的任务节点，加入今天的待办列表</p>
         </div>
-        <p class="import-modal-hint">选择学习目标中的任务节点，加入今天的待办列表</p>
         <div class="import-goal-list" id="import-goal-list"></div>
-        <div class="modal-footer">
+        <div class="modal-footer import-modal-footer">
           <div class="modal-footer-right">
             <button type="button" class="btn btn-ghost" id="cancel-import-btn">取消</button>
             <button type="button" class="btn btn-primary" id="confirm-import-btn">导入选中</button>
@@ -184,6 +225,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=12" type="module"></script>
+    <script src="app.js?v=13" type="module"></script>
   </body>
 </html>

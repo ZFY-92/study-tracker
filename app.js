@@ -1,4 +1,4 @@
-const APP_VERSION = '12';
+const APP_VERSION = '13';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -7,7 +7,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string }} DailyTask */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
-/** @typedef {'learning' | 'today'} TabName */
+/** @typedef {'learning' | 'today' | 'profile'} TabName */
 
 /** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
 let state = {
@@ -26,6 +26,10 @@ let editingGoalId = null;
 /** @type {TaskNode[]} */
 let editingTasks = [];
 let draggedGoalId = null;
+let swRegistration = null;
+let deferredInstallPrompt = null;
+/** @type {{ state: 'idle' | 'checking' | 'latest' | 'available' | 'error', remoteVersion: string | null, message: string }} */
+let updateCheckStatus = { state: 'idle', remoteVersion: null, message: '点击下方按钮检查更新' };
 
 const FILTER_LABELS = {
   all: '全部目标',
@@ -473,6 +477,16 @@ function updateHeader() {
     return;
   }
 
+  if (state.tab === 'profile') {
+    backBtn.hidden = true;
+    addBtn.hidden = true;
+    editBtn.hidden = true;
+    pageTitle.textContent = '我的';
+    pageSubtitle.textContent = '应用设置与版本';
+    pageSubtitle.hidden = false;
+    return;
+  }
+
   backBtn.hidden = state.view === 'home';
   addBtn.hidden = state.view === 'goal-detail';
   editBtn.hidden = state.view !== 'goal-detail';
@@ -507,6 +521,7 @@ function showActiveView() {
   $('#view-goals').hidden = !isLearning || state.view !== 'goals';
   $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
   $('#view-today').hidden = state.tab !== 'today';
+  $('#view-profile').hidden = state.tab !== 'profile';
 }
 
 function renderHome() {
@@ -960,6 +975,41 @@ function renderImportModal() {
     .join('');
 }
 
+function renderProfile() {
+  const versionEl = $('#profile-version');
+  const statusEl = $('#version-status');
+  const reloadBtn = $('#profile-reload-btn');
+  const checkBtn = $('#check-update-btn');
+  const installBtn = $('#profile-install-btn');
+  const installHint = $('#profile-install-hint');
+
+  if (versionEl) versionEl.textContent = `v${APP_VERSION}`;
+
+  if (statusEl) {
+    statusEl.textContent = updateCheckStatus.message;
+    statusEl.className = `profile-version-status status-${updateCheckStatus.state}`;
+  }
+
+  if (reloadBtn) {
+    reloadBtn.hidden = updateCheckStatus.state !== 'available';
+  }
+
+  if (checkBtn) {
+    checkBtn.disabled = updateCheckStatus.state === 'checking';
+    checkBtn.textContent = updateCheckStatus.state === 'checking' ? '检查中…' : '检查更新';
+  }
+
+  if (installBtn && installHint) {
+    if (deferredInstallPrompt) {
+      installBtn.hidden = false;
+      installHint.hidden = true;
+    } else {
+      installBtn.hidden = true;
+      installHint.hidden = false;
+    }
+  }
+}
+
 function render() {
   updateHeader();
   updateBottomNav();
@@ -967,6 +1017,11 @@ function render() {
 
   if (state.tab === 'today') {
     renderToday();
+    return;
+  }
+
+  if (state.tab === 'profile') {
+    renderProfile();
     return;
   }
 
@@ -1402,11 +1457,73 @@ function bindEvents() {
 function showUpdateBanner() {
   const banner = $('#update-banner');
   if (banner) banner.hidden = false;
+  updateCheckStatus = {
+    state: 'available',
+    remoteVersion: updateCheckStatus.remoteVersion,
+    message: updateCheckStatus.remoteVersion
+      ? `发现新版本 v${updateCheckStatus.remoteVersion}，请刷新页面`
+      : '发现新版本，请刷新页面',
+  };
+  if (state.tab === 'profile') renderProfile();
+}
+
+async function fetchRemoteVersion() {
+  const res = await fetch(`./sw.js?v=${Date.now()}`, { cache: 'no-store' });
+  if (!res.ok) throw new Error('network');
+  const text = await res.text();
+  const match = text.match(/const APP_VERSION = '(\d+)'/);
+  if (!match) throw new Error('parse');
+  return match[1];
+}
+
+async function checkForUpdates(options = {}) {
+  updateCheckStatus = { state: 'checking', remoteVersion: null, message: '正在检查更新…' };
+  renderProfile();
+
+  try {
+    if (swRegistration) await swRegistration.update();
+    const remoteVersion = await fetchRemoteVersion();
+    const hasWaitingWorker = !!swRegistration?.waiting;
+    const isNewer = Number(remoteVersion) > Number(APP_VERSION);
+
+    if (isNewer || hasWaitingWorker) {
+      updateCheckStatus = {
+        state: 'available',
+        remoteVersion,
+        message: isNewer
+          ? `发现新版本 v${remoteVersion}（当前 v${APP_VERSION}）`
+          : `新版本 v${remoteVersion} 已就绪，刷新后生效`,
+      };
+      showUpdateBanner();
+      if (!options.silent) showToast('发现新版本，请刷新');
+    } else {
+      updateCheckStatus = {
+        state: 'latest',
+        remoteVersion,
+        message: `已是最新版本（v${APP_VERSION}）`,
+      };
+      if (!options.silent) showToast('已是最新版本');
+    }
+  } catch {
+    updateCheckStatus = {
+      state: 'error',
+      remoteVersion: null,
+      message: '检查失败，请确认网络后重试',
+    };
+    if (!options.silent) showToast('检查更新失败');
+  }
+
+  renderProfile();
 }
 
 function checkAppVersion() {
   const stored = localStorage.getItem(VERSION_KEY);
   if (stored && stored !== APP_VERSION) {
+    updateCheckStatus = {
+      state: 'available',
+      remoteVersion: APP_VERSION,
+      message: `已加载 v${APP_VERSION}，建议刷新以确保功能完整`,
+    };
     showUpdateBanner();
   }
   localStorage.setItem(VERSION_KEY, APP_VERSION);
@@ -1417,6 +1534,7 @@ function setupPWA() {
     navigator.serviceWorker
       .register(`./sw.js?v=${APP_VERSION}`)
       .then((reg) => {
+        swRegistration = reg;
         const checkUpdate = () => reg.update().catch(() => {});
         checkUpdate();
         document.addEventListener('visibilitychange', () => {
@@ -1449,25 +1567,38 @@ function setupPWA() {
     window.location.reload();
   });
 
-  let deferredPrompt = null;
+  $('#profile-reload-btn')?.addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  $('#check-update-btn')?.addEventListener('click', () => checkForUpdates());
+
   const installBtn = $('#install-btn');
+  const profileInstallBtn = $('#profile-install-btn');
+
+  async function promptInstall() {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtn.hidden = true;
+    renderProfile();
+  }
 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
-    deferredPrompt = e;
+    deferredInstallPrompt = e;
     installBtn.hidden = false;
+    renderProfile();
   });
 
-  installBtn.addEventListener('click', async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    installBtn.hidden = true;
-  });
+  installBtn.addEventListener('click', promptInstall);
+  profileInstallBtn?.addEventListener('click', promptInstall);
 
   window.addEventListener('appinstalled', () => {
     installBtn.hidden = true;
+    deferredInstallPrompt = null;
+    renderProfile();
     showToast('应用已安装到桌面');
   });
 }
