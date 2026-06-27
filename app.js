@@ -1,4 +1,6 @@
+const APP_VERSION = '12';
 const STORAGE_KEY = 'learning-progress-data';
+const VERSION_KEY = 'learning-progress-app-version';
 
 /** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
@@ -828,6 +830,7 @@ function renderDailyCalendar() {
 
   container.innerHTML = `
     <div class="daily-calendar">
+      <div class="calendar-section-label">任务日历</div>
       <div class="calendar-nav">
         <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
         <span class="calendar-month-label">${monthLabel}</span>
@@ -1396,19 +1399,51 @@ function bindEvents() {
   });
 }
 
+function showUpdateBanner() {
+  const banner = $('#update-banner');
+  if (banner) banner.hidden = false;
+}
+
+function checkAppVersion() {
+  const stored = localStorage.getItem(VERSION_KEY);
+  if (stored && stored !== APP_VERSION) {
+    showUpdateBanner();
+  }
+  localStorage.setItem(VERSION_KEY, APP_VERSION);
+}
+
 function setupPWA() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').then((reg) => {
-      reg.addEventListener('updatefound', () => {
-        const worker = reg.installing;
-        worker?.addEventListener('statechange', () => {
-          if (worker.state === 'activated' && navigator.serviceWorker.controller) {
-            $('#update-banner').hidden = false;
-          }
+    navigator.serviceWorker
+      .register(`./sw.js?v=${APP_VERSION}`)
+      .then((reg) => {
+        const checkUpdate = () => reg.update().catch(() => {});
+        checkUpdate();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') checkUpdate();
         });
-      });
-    }).catch(() => {});
+
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          showUpdateBanner();
+        }
+
+        reg.addEventListener('updatefound', () => {
+          const worker = reg.installing;
+          worker?.addEventListener('statechange', () => {
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateBanner();
+            }
+          });
+        });
+
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          showUpdateBanner();
+        });
+      })
+      .catch(() => {});
   }
+
+  checkAppVersion();
 
   $('#reload-app-btn')?.addEventListener('click', () => {
     window.location.reload();

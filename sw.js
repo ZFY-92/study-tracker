@@ -1,11 +1,13 @@
-const CACHE_NAME = 'learning-progress-v11';
+const APP_VERSION = '12';
+const CACHE_NAME = `learning-progress-v${APP_VERSION}`;
 const ASSETS = [
   './',
   './index.html',
-  './app.js',
-  './styles.css',
+  `./app.js?v=${APP_VERSION}`,
+  `./styles.css?v=${APP_VERSION}`,
   './manifest.json',
   './icons/icon.svg',
+  `./sw.js?v=${APP_VERSION}`,
 ];
 
 function isAppShell(url) {
@@ -15,6 +17,23 @@ function isAppShell(url) {
     url.pathname.endsWith('.css') ||
     url.pathname.endsWith('/')
   );
+}
+
+function normalizeAppShellRequest(request) {
+  const url = new URL(request.url);
+  if (url.pathname.endsWith('/app.js')) {
+    return `./app.js?v=${APP_VERSION}`;
+  }
+  if (url.pathname.endsWith('/styles.css')) {
+    return `./styles.css?v=${APP_VERSION}`;
+  }
+  if (url.pathname.endsWith('/sw.js')) {
+    return `./sw.js?v=${APP_VERSION}`;
+  }
+  if (url.pathname.endsWith('/index.html') || url.pathname.endsWith('/')) {
+    return './index.html';
+  }
+  return request.url;
 }
 
 self.addEventListener('install', (event) => {
@@ -45,11 +64,12 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (response.ok) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            const cacheKey = normalizeAppShellRequest(event.request);
+            caches.open(CACHE_NAME).then((cache) => cache.put(cacheKey, clone));
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(normalizeAppShellRequest(event.request)).then((cached) => cached || caches.match(event.request)))
     );
     return;
   }

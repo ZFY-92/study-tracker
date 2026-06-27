@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=12" />
     <title>学习进度</title>
   </head>
   <body>
@@ -38,7 +38,7 @@
 
       <main class="main">
         <div class="update-banner" id="update-banner" hidden>
-          <span>发现新版本，请刷新以使用最新功能</span>
+          <span>发现新版本，请刷新页面以加载最新功能（含任务日历）</span>
           <button type="button" class="btn btn-primary btn-sm" id="reload-app-btn">立即刷新</button>
         </div>
 
@@ -71,7 +71,14 @@
 
         <!-- 今日任务 -->
         <section class="view" id="view-today" hidden>
-          <div class="today-calendar-wrap" id="today-calendar-wrap"></div>
+          <div class="today-calendar-wrap" id="today-calendar-wrap">
+            <div class="daily-calendar calendar-placeholder" aria-hidden="true">
+              <div class="calendar-section-label">任务日历</div>
+              <div class="calendar-nav">
+                <span class="calendar-month-label">加载中…</span>
+              </div>
+            </div>
+          </div>
           <div class="today-head">
             <div>
               <h2 class="view-title" id="today-view-title">今日任务</h2>
@@ -177,6 +184,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js" type="module"></script>
+    <script src="app.js?v=12" type="module"></script>
   </body>
 </html>

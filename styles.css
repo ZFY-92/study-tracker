@@ -1310,6 +1310,20 @@ body {
   box-shadow: var(--shadow);
 }
 
+.calendar-section-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 0.55rem;
+}
+
+.calendar-placeholder .calendar-month-label {
+  flex: 1;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .calendar-nav {
   display: flex;
   align-items: center;
@@ -1343,7 +1357,7 @@ body {
 
 .calendar-day {
   position: relative;
-  aspect-ratio: 1;
+  min-height: 2.5rem;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -1356,8 +1370,16 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.1rem;
-  padding: 0;
+  padding: 0.15rem;
   transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@supports (aspect-ratio: 1) {
+  .calendar-day {
+    aspect-ratio: 1;
+    min-height: 0;
+  }
 }
 
 .calendar-day.empty {
@@ -1587,6 +1609,21 @@ body {
 @media (max-width: 520px) {
   .header-inner {
     flex-wrap: wrap;
+  }
+
+  .calendar-day {
+    min-height: 2.75rem;
+    font-size: 0.88rem;
+  }
+
+  .calendar-nav .icon-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 1.25rem;
+  }
+
+  .daily-calendar {
+    padding: 0.9rem 0.65rem 1rem;
   }
 
   .form-grid {
