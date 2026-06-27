@@ -1,4 +1,4 @@
-const APP_VERSION = '15';
+const APP_VERSION = '16';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -9,7 +9,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, calendarExpanded: boolean }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -20,6 +20,7 @@ let state = {
   pinnedGoalId: null,
   selectedDailyDate: new Date().toISOString().slice(0, 10),
   calendarMonth: new Date().toISOString().slice(0, 7),
+  calendarExpanded: false,
 };
 
 let editingGoalId = null;
@@ -97,6 +98,7 @@ function loadData() {
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
+      state.calendarExpanded = !!data.calendarExpanded;
     }
   } catch {
     state.goals = [];
@@ -136,6 +138,7 @@ function saveData() {
       goals: state.goals,
       pinnedGoalId: state.pinnedGoalId,
       dailyTasks: state.dailyTasks,
+      calendarExpanded: state.calendarExpanded,
     })
   );
 }
@@ -171,6 +174,17 @@ function parseDateStr(dateStr) {
 
 function dateStrFromParts(year, month, day) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatDateShort(dateStr) {
+  const d = parseDateStr(dateStr);
+  return d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
+}
+
+function toggleCalendarExpanded() {
+  state.calendarExpanded = !state.calendarExpanded;
+  saveData();
+  renderToday();
 }
 
 function formatDateLabel(dateStr) {
@@ -844,15 +858,23 @@ function renderDailyCalendar() {
   }
 
   container.innerHTML = `
-    <div class="daily-calendar">
-      <div class="calendar-section-label">任务日历</div>
-      <div class="calendar-nav">
-        <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
-        <span class="calendar-month-label">${monthLabel}</span>
-        <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
+    <div class="daily-calendar${state.calendarExpanded ? ' expanded' : ' collapsed'}">
+      <button type="button" class="calendar-toggle" aria-expanded="${state.calendarExpanded}">
+        <span class="calendar-toggle-left">
+          <span class="calendar-toggle-title">任务日历</span>
+          <span class="calendar-toggle-summary">${escapeHtml(formatDateShort(selected))}</span>
+        </span>
+        <span class="calendar-chevron" aria-hidden="true">${state.calendarExpanded ? '▲' : '▼'}</span>
+      </button>
+      <div class="calendar-body" ${state.calendarExpanded ? '' : 'hidden'}>
+        <div class="calendar-nav">
+          <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
+          <span class="calendar-month-label">${monthLabel}</span>
+          <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
+        </div>
+        <div class="calendar-weekdays">${weekdayHtml}</div>
+        <div class="calendar-grid">${cells}</div>
       </div>
-      <div class="calendar-weekdays">${weekdayHtml}</div>
-      <div class="calendar-grid">${cells}</div>
     </div>
   `;
 }
@@ -1251,10 +1273,15 @@ function bindEvents() {
   });
 
   $('#today-calendar-wrap').addEventListener('click', (e) => {
+    const toggleBtn = e.target.closest('.calendar-toggle');
     const prevBtn = e.target.closest('.calendar-prev-btn');
     const nextBtn = e.target.closest('.calendar-next-btn');
     const dayBtn = e.target.closest('.calendar-day:not(.empty):not(.future)');
 
+    if (toggleBtn) {
+      toggleCalendarExpanded();
+      return;
+    }
     if (prevBtn) {
       const [year, month] = state.calendarMonth.split('-').map(Number);
       const d = new Date(year, month - 2, 1);

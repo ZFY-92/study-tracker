@@ -1472,22 +1472,64 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.85rem 0.9rem 0.95rem;
+  padding: 0.65rem 0.9rem;
   box-shadow: var(--shadow);
 }
 
-.calendar-section-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 0.55rem;
+.daily-calendar.expanded {
+  padding-bottom: 0.95rem;
 }
 
-.calendar-placeholder .calendar-month-label {
-  flex: 1;
-  text-align: center;
+.calendar-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.calendar-toggle-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.calendar-toggle-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.calendar-toggle-summary {
+  font-size: 0.78rem;
   color: var(--text-muted);
-  font-size: 0.9rem;
+}
+
+.calendar-chevron {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  width: 1.5rem;
+  text-align: center;
+}
+
+.calendar-body {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+
+.calendar-body[hidden] {
+  display: none !important;
 }
 
 .calendar-nav {

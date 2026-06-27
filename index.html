@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=15" />
+    <link rel="stylesheet" href="styles.css?v=16" />
     <title>学习进度</title>
   </head>
   <body>
@@ -72,11 +72,14 @@
         <!-- 今日任务 -->
         <section class="view" id="view-today" hidden>
           <div class="today-calendar-wrap" id="today-calendar-wrap">
-            <div class="daily-calendar calendar-placeholder" aria-hidden="true">
-              <div class="calendar-section-label">任务日历</div>
-              <div class="calendar-nav">
-                <span class="calendar-month-label">加载中…</span>
-              </div>
+            <div class="daily-calendar collapsed calendar-placeholder" aria-hidden="true">
+              <button type="button" class="calendar-toggle" disabled>
+                <span class="calendar-toggle-left">
+                  <span class="calendar-toggle-title">任务日历</span>
+                  <span class="calendar-toggle-summary">加载中…</span>
+                </span>
+                <span class="calendar-chevron" aria-hidden="true">▼</span>
+              </button>
             </div>
           </div>
           <div class="today-head">
@@ -226,6 +229,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=15" type="module"></script>
+    <script src="app.js?v=16" type="module"></script>
   </body>
 </html>
