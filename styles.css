@@ -1290,6 +1290,125 @@ body {
   margin-bottom: 1rem;
 }
 
+.today-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.today-calendar-wrap {
+  margin-bottom: 1rem;
+}
+
+.daily-calendar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 0.9rem 0.95rem;
+  box-shadow: var(--shadow);
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.calendar-month-label {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.25rem;
+}
+
+.calendar-weekdays {
+  margin-bottom: 0.35rem;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0.2rem 0;
+}
+
+.calendar-day {
+  position: relative;
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.calendar-day.empty {
+  pointer-events: none;
+}
+
+.calendar-day:not(.empty):not(.future):hover {
+  background: var(--bg-hover);
+}
+
+.calendar-day.today:not(.selected) {
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+
+.calendar-day.selected {
+  background: var(--primary);
+  color: #fff;
+}
+
+.calendar-day.selected .calendar-day-dot {
+  background: #fff;
+}
+
+.calendar-day.future {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.calendar-day.has-tasks.partial:not(.selected) .calendar-day-dot {
+  background: #f59e0b;
+}
+
+.calendar-day.has-tasks.all-done:not(.selected) .calendar-day-dot {
+  background: var(--success);
+}
+
+.calendar-day.has-tasks:not(.partial):not(.all-done):not(.selected) .calendar-day-dot {
+  background: var(--primary);
+}
+
+.calendar-day-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.calendar-day-num {
+  line-height: 1;
+}
+
 .today-head .view-title {
   margin-bottom: 0.25rem;
 }

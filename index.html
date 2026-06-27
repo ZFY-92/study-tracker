@@ -71,14 +71,18 @@
 
         <!-- 今日任务 -->
         <section class="view" id="view-today" hidden>
+          <div class="today-calendar-wrap" id="today-calendar-wrap"></div>
           <div class="today-head">
             <div>
-              <h2 class="view-title">今日任务</h2>
+              <h2 class="view-title" id="today-view-title">今日任务</h2>
               <p class="today-date" id="today-date-label"></p>
             </div>
-            <div class="today-progress-badge" id="today-progress-badge"></div>
+            <div class="today-head-actions">
+              <button type="button" class="btn btn-ghost btn-sm" id="back-to-today-btn" hidden>回到今天</button>
+              <div class="today-progress-badge" id="today-progress-badge"></div>
+            </div>
           </div>
-          <div class="today-actions">
+          <div class="today-actions" id="today-actions">
             <form class="today-add-form" id="today-add-form">
               <input type="text" name="title" maxlength="80" placeholder="写一条今天要做的任务…" required />
               <button type="submit" class="btn btn-primary btn-sm">添加</button>

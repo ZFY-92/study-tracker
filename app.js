@@ -7,7 +7,7 @@ const STORAGE_KEY = 'learning-progress-data';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -16,6 +16,8 @@ let state = {
   filter: 'all',
   selectedGoalId: null,
   pinnedGoalId: null,
+  selectedDailyDate: new Date().toISOString().slice(0, 10),
+  calendarMonth: new Date().toISOString().slice(0, 7),
 };
 
 let editingGoalId = null;
@@ -132,14 +134,41 @@ function saveData() {
   );
 }
 
-function getTodayTasks() {
-  const date = todayStr();
+function getSelectedDailyDate() {
+  return state.selectedDailyDate;
+}
+
+function isTodaySelected() {
+  return getSelectedDailyDate() === todayStr();
+}
+
+function setSelectedDailyDate(dateStr) {
+  state.selectedDailyDate = dateStr;
+  state.calendarMonth = dateStr.slice(0, 7);
+  renderToday();
+  updateHeader();
+}
+
+function getDailyTasks(date = getSelectedDailyDate()) {
+  return state.dailyTasks[date] || [];
+}
+
+function ensureDailyTasks(date = getSelectedDailyDate()) {
   if (!state.dailyTasks[date]) state.dailyTasks[date] = [];
   return state.dailyTasks[date];
 }
 
-function formatTodayLabel() {
-  const d = new Date();
+function parseDateStr(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dateStrFromParts(year, month, day) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatDateLabel(dateStr) {
+  const d = parseDateStr(dateStr);
   return d.toLocaleDateString('zh-CN', {
     year: 'numeric',
     month: 'long',
@@ -148,11 +177,23 @@ function formatTodayLabel() {
   });
 }
 
-function getDailyTaskStats() {
-  const tasks = getTodayTasks();
+function getDailyTaskStatsForDate(date = getSelectedDailyDate()) {
+  const tasks = getDailyTasks(date);
   const total = tasks.length;
   const completed = tasks.filter((t) => t.completed).length;
   return { total, completed };
+}
+
+function getDailyTaskDayStatus(dateStr) {
+  const tasks = state.dailyTasks[dateStr];
+  if (!tasks?.length) return 'none';
+  const completed = tasks.filter((t) => t.completed).length;
+  if (completed === tasks.length) return 'done';
+  return 'partial';
+}
+
+function getTodayTasks() {
+  return ensureDailyTasks(getSelectedDailyDate());
 }
 
 function isDailyTaskImported(goalId, taskId) {
@@ -206,14 +247,15 @@ function importGoalTasks(items) {
 }
 
 function toggleDailyTask(taskId, completed) {
-  const tasks = getTodayTasks();
+  const date = getSelectedDailyDate();
+  const tasks = ensureDailyTasks(date);
   const task = tasks.find((t) => t.id === taskId);
   if (!task) return;
 
   task.completed = completed;
-  task.completedAt = completed ? todayStr() : null;
+  task.completedAt = completed ? date : null;
 
-  if (task.source === 'goal' && task.goalId && task.taskId) {
+  if (task.source === 'goal' && task.goalId && task.taskId && date === todayStr()) {
     toggleTask(task.goalId, task.taskId, completed, { silent: true });
   }
 
@@ -223,11 +265,12 @@ function toggleDailyTask(taskId, completed) {
 }
 
 function deleteDailyTask(taskId) {
-  const tasks = getTodayTasks();
+  const tasks = ensureDailyTasks(getSelectedDailyDate());
   const idx = tasks.findIndex((t) => t.id === taskId);
   if (idx < 0) return;
 
   tasks.splice(idx, 1);
+  if (tasks.length === 0) delete state.dailyTasks[getSelectedDailyDate()];
   saveData();
   renderToday();
   showToast('任务已删除');
@@ -336,6 +379,10 @@ function navigateTo(view, options = {}) {
 
 function switchTab(tab) {
   state.tab = tab;
+  if (tab === 'today' && state.selectedDailyDate > todayStr()) {
+    state.selectedDailyDate = todayStr();
+    state.calendarMonth = todayStr().slice(0, 7);
+  }
   render();
 }
 
@@ -413,9 +460,13 @@ function updateHeader() {
     backBtn.hidden = true;
     addBtn.hidden = true;
     editBtn.hidden = true;
-    pageTitle.textContent = '今日任务';
-    const { completed, total } = getDailyTaskStats();
-    pageSubtitle.textContent = total === 0 ? '规划好今天要做的事' : `已完成 ${completed} / ${total}`;
+    const selected = getSelectedDailyDate();
+    const isToday = isTodaySelected();
+    pageTitle.textContent = isToday ? '今日任务' : '任务记录';
+    const { completed, total } = getDailyTaskStatsForDate(selected);
+    pageSubtitle.textContent = total === 0
+      ? (isToday ? '规划好今天要做的事' : formatDateLabel(selected))
+      : `${isToday ? '今天' : formatDateLabel(selected)} · 已完成 ${completed} / ${total}`;
     pageSubtitle.hidden = false;
     return;
   }
@@ -731,26 +782,106 @@ function renderTodayTaskItem(task) {
   `;
 }
 
+function renderDailyCalendar() {
+  const container = $('#today-calendar-wrap');
+  if (!container) return;
+
+  const [year, month] = state.calendarMonth.split('-').map(Number);
+  const firstDay = new Date(year, month - 1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startWeekday = firstDay.getDay();
+  const today = todayStr();
+  const selected = getSelectedDailyDate();
+  const monthLabel = firstDay.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
+
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+  const weekdayHtml = weekdays.map((d) => `<span class="calendar-weekday">${d}</span>`).join('');
+
+  let cells = '';
+  for (let i = 0; i < startWeekday; i += 1) {
+    cells += `<span class="calendar-day empty" aria-hidden="true"></span>`;
+  }
+
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dateStr = dateStrFromParts(year, month, day);
+    const isFuture = dateStr > today;
+    const status = getDailyTaskDayStatus(dateStr);
+    const classes = [
+      'calendar-day',
+      dateStr === selected ? 'selected' : '',
+      dateStr === today ? 'today' : '',
+      status !== 'none' ? 'has-tasks' : '',
+      status === 'done' ? 'all-done' : '',
+      status === 'partial' ? 'partial' : '',
+      isFuture ? 'future' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+    cells += `
+      <button type="button" class="${classes}" data-date="${dateStr}" ${isFuture ? 'disabled' : ''} aria-label="${month}月${day}日${status !== 'none' ? '，有任务记录' : ''}">
+        <span class="calendar-day-num">${day}</span>
+        ${status !== 'none' ? '<span class="calendar-day-dot" aria-hidden="true"></span>' : ''}
+      </button>
+    `;
+  }
+
+  container.innerHTML = `
+    <div class="daily-calendar">
+      <div class="calendar-nav">
+        <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
+        <span class="calendar-month-label">${monthLabel}</span>
+        <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
+      </div>
+      <div class="calendar-weekdays">${weekdayHtml}</div>
+      <div class="calendar-grid">${cells}</div>
+    </div>
+  `;
+}
+
 function renderToday() {
-  const tasks = getTodayTasks();
-  const { completed, total } = getDailyTaskStats();
+  renderDailyCalendar();
+
+  const selected = getSelectedDailyDate();
+  const isToday = isTodaySelected();
+  const tasks = getDailyTasks(selected);
+  const { completed, total } = getDailyTaskStatsForDate(selected);
   const pending = tasks.filter((t) => !t.completed);
   const done = tasks.filter((t) => t.completed);
 
+  const viewTitle = $('#today-view-title');
   const dateLabel = $('#today-date-label');
   const badge = $('#today-progress-badge');
+  const backBtn = $('#back-to-today-btn');
   const list = $('#today-task-list');
   const empty = $('#today-empty-state');
+  const actions = $('#today-actions');
+  const addForm = $('#today-add-form');
+  const importBtn = $('#open-import-modal-btn');
 
-  if (dateLabel) dateLabel.textContent = formatTodayLabel();
+  if (viewTitle) viewTitle.textContent = isToday ? '今日任务' : '任务记录';
+  if (dateLabel) dateLabel.textContent = formatDateLabel(selected);
+  if (backBtn) backBtn.hidden = isToday;
   if (badge) {
     badge.textContent = total === 0 ? '0 项' : `${completed}/${total}`;
     badge.classList.toggle('all-done', total > 0 && completed === total);
   }
+  if (actions) actions.hidden = false;
+  if (addForm) {
+    const input = addForm.querySelector('input[name="title"]');
+    if (input) input.placeholder = isToday ? '写一条今天要做的任务…' : '为这一天补充一条任务…';
+  }
+  if (importBtn) importBtn.hidden = !isToday;
 
   if (tasks.length === 0) {
     if (list) list.innerHTML = '';
-    if (empty) empty.hidden = false;
+    if (empty) {
+      empty.hidden = false;
+      empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
+      empty.querySelector('p').textContent = isToday
+        ? '手动添加，或从学习目标里导入任务节点'
+        : '可以补充任务，或在日历中选择其他日期查看';
+    }
     return;
   }
 
@@ -1049,6 +1180,38 @@ function bindEvents() {
     addCustomDailyTask(input.value);
     input.value = '';
     input.focus();
+  });
+
+  $('#today-calendar-wrap').addEventListener('click', (e) => {
+    const prevBtn = e.target.closest('.calendar-prev-btn');
+    const nextBtn = e.target.closest('.calendar-next-btn');
+    const dayBtn = e.target.closest('.calendar-day:not(.empty):not(.future)');
+
+    if (prevBtn) {
+      const [year, month] = state.calendarMonth.split('-').map(Number);
+      const d = new Date(year, month - 2, 1);
+      state.calendarMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      renderToday();
+      return;
+    }
+
+    if (nextBtn && !nextBtn.disabled) {
+      const [year, month] = state.calendarMonth.split('-').map(Number);
+      const d = new Date(year, month, 1);
+      const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      if (nextMonth > todayStr().slice(0, 7)) return;
+      state.calendarMonth = nextMonth;
+      renderToday();
+      return;
+    }
+
+    if (dayBtn?.dataset.date) {
+      setSelectedDailyDate(dayBtn.dataset.date);
+    }
+  });
+
+  $('#back-to-today-btn').addEventListener('click', () => {
+    setSelectedDailyDate(todayStr());
   });
 
   $('#today-task-list').addEventListener('change', (e) => {
