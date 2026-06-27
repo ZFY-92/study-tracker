@@ -1,4 +1,4 @@
-const APP_VERSION = '17';
+const APP_VERSION = '18';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -7,17 +7,14 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string }} DailyTask */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
-/** @typedef {'learning' | 'today' | 'profile'} TabName */
+/** @typedef {'learning' | 'today' | 'calendar' | 'profile'} TabName */
 
-/** @typedef {'tasks' | 'calendar'} TodaySubview */
-
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, todaySubview: TodaySubview, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string }} */
 let state = {
   goals: [],
   dailyTasks: {},
   tab: 'learning',
   view: 'home',
-  todaySubview: 'tasks',
   filter: 'all',
   selectedGoalId: null,
   pinnedGoalId: null,
@@ -151,20 +148,17 @@ function isTodaySelected() {
   return getSelectedDailyDate() === todayStr();
 }
 
-function countDaysWithTasks() {
-  return Object.keys(state.dailyTasks).filter((d) => state.dailyTasks[d]?.length > 0).length;
-}
-
-function navigateToday(subview) {
-  state.todaySubview = subview;
-  render();
-}
-
 function setSelectedDailyDate(dateStr) {
   state.selectedDailyDate = dateStr;
   state.calendarMonth = dateStr.slice(0, 7);
   render();
   updateHeader();
+}
+
+function selectDateAndGoToday(dateStr) {
+  state.selectedDailyDate = dateStr;
+  state.calendarMonth = dateStr.slice(0, 7);
+  switchTab('today');
 }
 
 function getDailyTasks(date = getSelectedDailyDate()) {
@@ -402,13 +396,9 @@ function navigateTo(view, options = {}) {
 
 function switchTab(tab) {
   state.tab = tab;
-  if (tab === 'today') {
-    if (state.selectedDailyDate > todayStr()) {
-      state.selectedDailyDate = todayStr();
-      state.calendarMonth = todayStr().slice(0, 7);
-    }
-  } else {
-    state.todaySubview = 'tasks';
+  if ((tab === 'today' || tab === 'calendar') && state.selectedDailyDate > todayStr()) {
+    state.selectedDailyDate = todayStr();
+    state.calendarMonth = todayStr().slice(0, 7);
   }
   render();
 }
@@ -422,10 +412,6 @@ function navigateToGoalDetail(goalId) {
 }
 
 function goBack() {
-  if (state.tab === 'today' && state.todaySubview === 'calendar') {
-    navigateToday('tasks');
-    return;
-  }
   if (state.tab !== 'learning') return;
   if (state.view === 'goal-detail') {
     navigateTo('goals');
@@ -488,25 +474,26 @@ function updateHeader() {
   const pageSubtitle = $('#page-subtitle');
 
   if (state.tab === 'today') {
+    backBtn.hidden = true;
     addBtn.hidden = true;
     editBtn.hidden = true;
     const selected = getSelectedDailyDate();
     const isToday = isTodaySelected();
     const { completed, total } = getDailyTaskStatsForDate(selected);
-
-    if (state.todaySubview === 'calendar') {
-      backBtn.hidden = false;
-      pageTitle.textContent = '任务日历';
-      pageSubtitle.textContent = formatDateLabel(selected);
-      pageSubtitle.hidden = false;
-      return;
-    }
-
-    backBtn.hidden = true;
     pageTitle.textContent = isToday ? '今日任务' : '任务记录';
     pageSubtitle.textContent = total === 0
       ? (isToday ? '规划好今天要做的事' : formatDateLabel(selected))
       : `${isToday ? '今天' : formatDateLabel(selected)} · 已完成 ${completed} / ${total}`;
+    pageSubtitle.hidden = false;
+    return;
+  }
+
+  if (state.tab === 'calendar') {
+    backBtn.hidden = true;
+    addBtn.hidden = true;
+    editBtn.hidden = true;
+    pageTitle.textContent = '任务日历';
+    pageSubtitle.textContent = formatDateLabel(getSelectedDailyDate());
     pageSubtitle.hidden = false;
     return;
   }
@@ -554,8 +541,8 @@ function showActiveView() {
   $('#view-home').hidden = !isLearning || state.view !== 'home';
   $('#view-goals').hidden = !isLearning || state.view !== 'goals';
   $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
-  $('#view-today').hidden = state.tab !== 'today' || state.todaySubview !== 'tasks';
-  $('#view-today-calendar').hidden = state.tab !== 'today' || state.todaySubview !== 'calendar';
+  $('#view-today').hidden = state.tab !== 'today';
+  $('#view-calendar').hidden = state.tab !== 'calendar';
   $('#view-profile').hidden = state.tab !== 'profile';
 }
 
@@ -891,32 +878,7 @@ function renderDailyCalendar() {
   `;
 }
 
-function renderTodayNavCard() {
-  const container = $('#today-nav-card');
-  if (!container) return;
-
-  const selected = getSelectedDailyDate();
-  const isToday = isTodaySelected();
-  const daysWithTasks = countDaysWithTasks();
-  const desc = isToday
-    ? `查看历史任务 · ${daysWithTasks} 天有记录`
-    : `当前 ${formatDateShort(selected)} · ${daysWithTasks} 天有记录`;
-
-  container.innerHTML = `
-    <button type="button" class="nav-card" data-today-nav="calendar" style="--nav-color:#8b5cf6">
-      <div class="nav-card-icon">📅</div>
-      <div class="nav-card-body">
-        <h3>任务日历</h3>
-        <p>${escapeHtml(desc)}</p>
-      </div>
-      <span class="nav-card-arrow" aria-hidden="true">→</span>
-    </button>
-  `;
-}
-
-function renderTodayTasks() {
-  renderTodayNavCard();
-
+function renderToday() {
   const selected = getSelectedDailyDate();
   const isToday = isTodaySelected();
   const tasks = getDailyTasks(selected);
@@ -955,7 +917,7 @@ function renderTodayTasks() {
       empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
       empty.querySelector('p').textContent = isToday
         ? '手动添加，或从学习目标里导入任务节点'
-        : '可以补充任务，或在日历中选择其他日期查看';
+        : '可以补充任务，或切换到「日历」查看其他日期';
     }
     return;
   }
@@ -983,16 +945,8 @@ function renderTodayTasks() {
   }
 }
 
-function renderTodayCalendar() {
+function renderCalendar() {
   renderDailyCalendar();
-}
-
-function renderToday() {
-  if (state.todaySubview === 'calendar') {
-    renderTodayCalendar();
-    return;
-  }
-  renderTodayTasks();
 }
 
 function renderImportModal() {
@@ -1086,6 +1040,11 @@ function render() {
 
   if (state.tab === 'today') {
     renderToday();
+    return;
+  }
+
+  if (state.tab === 'calendar') {
+    renderCalendar();
     return;
   }
 
@@ -1319,11 +1278,6 @@ function bindEvents() {
     input.focus();
   });
 
-  $('#today-nav-card').addEventListener('click', (e) => {
-    const card = e.target.closest('[data-today-nav="calendar"]');
-    if (card) navigateToday('calendar');
-  });
-
   $('#today-calendar-wrap').addEventListener('click', (e) => {
     const prevBtn = e.target.closest('.calendar-prev-btn');
     const nextBtn = e.target.closest('.calendar-next-btn');
@@ -1333,7 +1287,7 @@ function bindEvents() {
       const [year, month] = state.calendarMonth.split('-').map(Number);
       const d = new Date(year, month - 2, 1);
       state.calendarMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      renderToday();
+      renderCalendar();
       return;
     }
 
@@ -1343,14 +1297,12 @@ function bindEvents() {
       const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (nextMonth > todayStr().slice(0, 7)) return;
       state.calendarMonth = nextMonth;
-      renderToday();
+      renderCalendar();
       return;
     }
 
     if (dayBtn?.dataset.date) {
-      state.selectedDailyDate = dayBtn.dataset.date;
-      state.calendarMonth = dayBtn.dataset.date.slice(0, 7);
-      navigateToday('tasks');
+      selectDateAndGoToday(dayBtn.dataset.date);
     }
   });
 

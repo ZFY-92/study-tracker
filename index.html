@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=17" />
+    <link rel="stylesheet" href="styles.css?v=18" />
     <title>学习进度</title>
   </head>
   <body>
@@ -71,7 +71,6 @@
 
         <!-- 今日任务 -->
         <section class="view" id="view-today" hidden>
-          <div class="today-nav-card-wrap" id="today-nav-card"></div>
           <div class="today-head">
             <div>
               <h2 class="view-title" id="today-view-title">今日任务</h2>
@@ -98,9 +97,9 @@
         </section>
 
         <!-- 任务日历 -->
-        <section class="view" id="view-today-calendar" hidden>
+        <section class="view" id="view-calendar" hidden>
           <h2 class="view-title">任务日历</h2>
-          <p class="calendar-page-hint">点击日期查看该天的任务记录</p>
+          <p class="calendar-page-hint">点击日期，跳转到该天的任务列表</p>
           <div class="today-calendar-wrap" id="today-calendar-wrap"></div>
           <div class="calendar-legend">
             <span class="calendar-legend-item"><span class="calendar-legend-dot partial"></span>部分完成</span>
@@ -152,7 +151,11 @@
         </button>
         <button type="button" class="bottom-nav-item" data-tab="today">
           <span class="bottom-nav-icon" aria-hidden="true">📋</span>
-          <span>今日任务</span>
+          <span>今日</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-tab="calendar">
+          <span class="bottom-nav-icon" aria-hidden="true">📅</span>
+          <span>日历</span>
         </button>
         <button type="button" class="bottom-nav-item" data-tab="profile">
           <span class="bottom-nav-icon" aria-hidden="true">👤</span>
@@ -231,6 +234,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=17" type="module"></script>
+    <script src="app.js?v=18" type="module"></script>
   </body>
 </html>

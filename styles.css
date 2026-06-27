@@ -1428,15 +1428,16 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.2rem;
-  padding: 0.55rem 0.5rem 0.65rem;
+  gap: 0.15rem;
+  padding: 0.5rem 0.2rem 0.6rem;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-family: inherit;
   cursor: pointer;
   transition: color 0.15s;
+  min-width: 0;
 }
 
 .bottom-nav-item.active {
@@ -1444,7 +1445,7 @@ body {
 }
 
 .bottom-nav-icon {
-  font-size: 1.25rem;
+  font-size: 1.15rem;
   line-height: 1;
 }
 
@@ -1462,14 +1463,6 @@ body {
   align-items: flex-end;
   gap: 0.45rem;
   flex-shrink: 0;
-}
-
-.today-nav-card-wrap {
-  margin-bottom: 1rem;
-}
-
-.today-nav-card-wrap .nav-card {
-  margin-bottom: 0;
 }
 
 .calendar-page-hint {
