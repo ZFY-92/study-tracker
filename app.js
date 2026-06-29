@@ -1,4 +1,4 @@
-const APP_VERSION = '19';
+const APP_VERSION = '20';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -6,13 +6,16 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string }} DailyTask */
 
-/** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
-/** @typedef {'learning' | 'today' | 'calendar' | 'profile'} TabName */
+/** @typedef {{ wake?: string, bed?: string }} SleepDayRecord */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string }} */
+/** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
+/** @typedef {'learning' | 'today' | 'calendar' | 'sleep' | 'profile'} TabName */
+
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month' }} */
 let state = {
   goals: [],
   dailyTasks: {},
+  sleepRecords: {},
   tab: 'learning',
   view: 'home',
   filter: 'all',
@@ -22,6 +25,7 @@ let state = {
   calendarMonth: '',
   carryOverDailyTasks: true,
   lastRolloverDate: '',
+  sleepChartRange: 'week',
 };
 
 let editingGoalId = null;
@@ -106,6 +110,7 @@ function loadData() {
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
+      state.sleepRecords = migrateSleepRecords(data.sleepRecords);
       state.carryOverDailyTasks = data.carryOverDailyTasks !== false;
       state.lastRolloverDate = data.lastRolloverDate || '';
     }
@@ -113,6 +118,7 @@ function loadData() {
     state.goals = [];
     state.pinnedGoalId = null;
     state.dailyTasks = {};
+    state.sleepRecords = {};
     state.carryOverDailyTasks = true;
     state.lastRolloverDate = '';
   }
@@ -145,6 +151,20 @@ function migrateDailyTasks(raw) {
   return result;
 }
 
+function migrateSleepRecords(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  /** @type {Record<string, SleepDayRecord>} */
+  const result = {};
+  for (const [date, record] of Object.entries(raw)) {
+    if (!record || typeof record !== 'object') continue;
+    const entry = {};
+    if (typeof record.wake === 'string' && /^\d{2}:\d{2}$/.test(record.wake)) entry.wake = record.wake;
+    if (typeof record.bed === 'string' && /^\d{2}:\d{2}$/.test(record.bed)) entry.bed = record.bed;
+    if (entry.wake || entry.bed) result[date] = entry;
+  }
+  return result;
+}
+
 function saveData() {
   localStorage.setItem(
     STORAGE_KEY,
@@ -152,6 +172,7 @@ function saveData() {
       goals: state.goals,
       pinnedGoalId: state.pinnedGoalId,
       dailyTasks: state.dailyTasks,
+      sleepRecords: state.sleepRecords,
       carryOverDailyTasks: state.carryOverDailyTasks,
       lastRolloverDate: state.lastRolloverDate,
     })
@@ -219,6 +240,225 @@ function rolloverIncompleteDailyTasks(options = {}) {
   }
 
   return added;
+}
+
+function nowTimeStr() {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function parseTimeToMinutes(timeStr, forBed = false) {
+  const [h, m] = timeStr.split(':').map(Number);
+  let mins = h * 60 + m;
+  if (forBed && h < 12) mins += 24 * 60;
+  return mins;
+}
+
+function formatMinutesAsTime(mins, forBed = false) {
+  let value = mins;
+  if (forBed && value >= 24 * 60) value -= 24 * 60;
+  const h = Math.floor(value / 60) % 24;
+  const m = value % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function ensureSleepRecord(date = todayStr()) {
+  if (!state.sleepRecords[date]) state.sleepRecords[date] = {};
+  return state.sleepRecords[date];
+}
+
+function recordSleepTime(type) {
+  const date = todayStr();
+  const time = nowTimeStr();
+  const record = ensureSleepRecord(date);
+  const hadValue = !!record[type];
+  record[type] = time;
+  saveData();
+  showToast(hadValue ? `已更新${type === 'wake' ? '起床' : '睡觉'}时间为 ${time}` : `已记录${type === 'wake' ? '起床' : '睡觉'}时间 ${time}`);
+  if (state.tab === 'sleep') renderSleep();
+}
+
+function getSleepChartDates(range = state.sleepChartRange) {
+  const today = todayStr();
+  const dates = [];
+
+  if (range === 'week') {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    for (let i = 0; i < 7; i += 1) {
+      dates.push(dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate()));
+      d.setDate(d.getDate() + 1);
+    }
+    return dates;
+  }
+
+  const [year, month] = today.split('-').map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const todayDay = Number(today.split('-')[2]);
+  for (let day = 1; day <= todayDay; day += 1) {
+    dates.push(dateStrFromParts(year, month, day));
+  }
+  return dates;
+}
+
+function getRecentSleepDates(limit = 14) {
+  const dates = Object.keys(state.sleepRecords).filter((date) => {
+    const r = state.sleepRecords[date];
+    return r && (r.wake || r.bed);
+  });
+  dates.sort((a, b) => b.localeCompare(a));
+  return dates.slice(0, limit);
+}
+
+function buildSleepTimeChart({ title, color, dates, field, forBed }) {
+  const width = 360;
+  const height = 180;
+  const pad = { top: 16, right: 16, bottom: 32, left: 48 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+
+  const slots = dates.map((date, index) => {
+    const value = state.sleepRecords[date]?.[field];
+    return { date, index, value: value || null };
+  });
+
+  const plotted = slots.filter((slot) => slot.value);
+  if (plotted.length === 0) {
+    return `
+      <article class="sleep-chart-card">
+        <h4 class="sleep-chart-title">${escapeHtml(title)}</h4>
+        <p class="sleep-chart-empty">暂无数据，点击上方按钮开始记录</p>
+      </article>
+    `;
+  }
+
+  const minuteValues = plotted.map((slot) => parseTimeToMinutes(slot.value, forBed));
+  let minM = Math.min(...minuteValues);
+  let maxM = Math.max(...minuteValues);
+  const span = Math.max(maxM - minM, 60);
+  minM = Math.floor((minM - span * 0.15) / 30) * 30;
+  maxM = Math.ceil((maxM + span * 0.15) / 30) * 30;
+  const rangeM = Math.max(maxM - minM, 30);
+
+  const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
+  const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
+
+  const points = plotted
+    .map((slot) => {
+      const mins = parseTimeToMinutes(slot.value, forBed);
+      return `${toX(slot.index)},${toY(mins)}`;
+    })
+    .join(' ');
+
+  const dots = plotted
+    .map((slot) => {
+      const mins = parseTimeToMinutes(slot.value, forBed);
+      return `<circle cx="${toX(slot.index)}" cy="${toY(mins)}" r="4" fill="${color}" />`;
+    })
+    .join('');
+
+  const yTicks = 4;
+  const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
+    const mins = minM + (rangeM * i) / yTicks;
+    const y = pad.top + chartH - (chartH * i) / yTicks;
+    return `
+      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="sleep-grid-line" />
+      <text x="${pad.left - 8}" y="${y + 4}" class="sleep-axis-label" text-anchor="end">${formatMinutesAsTime(Math.round(mins), forBed)}</text>
+    `;
+  }).join('');
+
+  const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
+  const xLabels = dates
+    .map((date, index) => {
+      if (index % xStep !== 0 && index !== dates.length - 1) return '';
+      const label = date.slice(5).replace('-', '/');
+      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${label}</text>`;
+    })
+    .join('');
+
+  return `
+    <article class="sleep-chart-card">
+      <h4 class="sleep-chart-title">${escapeHtml(title)}</h4>
+      <div class="sleep-chart-svg-wrap">
+        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+          ${yLabels}
+          <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          ${dots}
+          ${xLabels}
+        </svg>
+      </div>
+    </article>
+  `;
+}
+
+function renderSleep() {
+  const today = todayStr();
+  const record = state.sleepRecords[today] || {};
+
+  const dateEl = $('#sleep-today-date');
+  if (dateEl) {
+    dateEl.textContent = new Date(today.replace(/-/g, '/')).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'long',
+    });
+  }
+
+  const wakeEl = $('#sleep-wake-display');
+  const bedEl = $('#sleep-bed-display');
+  if (wakeEl) {
+    wakeEl.textContent = record.wake || '—';
+    wakeEl.classList.toggle('has-value', !!record.wake);
+  }
+  if (bedEl) {
+    bedEl.textContent = record.bed || '—';
+    bedEl.classList.toggle('has-value', !!record.bed);
+  }
+
+  $$('.sleep-range-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.range === state.sleepChartRange);
+  });
+
+  const dates = getSleepChartDates();
+  const chartsEl = $('#sleep-charts');
+  if (chartsEl) {
+    chartsEl.innerHTML = `
+      ${buildSleepTimeChart({ title: '起床时间', color: '#f59e0b', dates, field: 'wake', forBed: false })}
+      ${buildSleepTimeChart({ title: '睡觉时间', color: '#6366f1', dates, field: 'bed', forBed: true })}
+    `;
+  }
+
+  const historyEl = $('#sleep-history-wrap');
+  if (historyEl) {
+    const recent = getRecentSleepDates();
+    if (recent.length === 0) {
+      historyEl.innerHTML = '<p class="sleep-history-empty">还没有记录</p>';
+    } else {
+      historyEl.innerHTML = `
+        <table class="sleep-history-table">
+          <thead>
+            <tr><th>日期</th><th>起床</th><th>睡觉</th></tr>
+          </thead>
+          <tbody>
+            ${recent
+              .map((date) => {
+                const r = state.sleepRecords[date];
+                const label = date === today ? '今天' : date.slice(5).replace('-', '/');
+                return `
+                  <tr>
+                    <td>${label}</td>
+                    <td>${r.wake || '—'}</td>
+                    <td>${r.bed || '—'}</td>
+                  </tr>
+                `;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      `;
+    }
+  }
 }
 
 function getSelectedDailyDate() {
@@ -579,6 +819,21 @@ function updateHeader() {
     return;
   }
 
+  if (state.tab === 'sleep') {
+    backBtn.hidden = true;
+    addBtn.hidden = true;
+    editBtn.hidden = true;
+    pageTitle.textContent = '作息记录';
+    const today = todayStr();
+    const record = state.sleepRecords[today] || {};
+    const parts = [];
+    if (record.wake) parts.push(`起床 ${record.wake}`);
+    if (record.bed) parts.push(`睡觉 ${record.bed}`);
+    pageSubtitle.textContent = parts.length ? parts.join(' · ') : '记录每日起床与睡觉时间';
+    pageSubtitle.hidden = false;
+    return;
+  }
+
   if (state.tab === 'profile') {
     backBtn.hidden = true;
     addBtn.hidden = true;
@@ -624,6 +879,7 @@ function showActiveView() {
   $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
   $('#view-today').hidden = state.tab !== 'today';
   $('#view-calendar').hidden = state.tab !== 'calendar';
+  $('#view-sleep').hidden = state.tab !== 'sleep';
   $('#view-profile').hidden = state.tab !== 'profile';
 }
 
@@ -1135,6 +1391,11 @@ function render() {
     return;
   }
 
+  if (state.tab === 'sleep') {
+    renderSleep();
+    return;
+  }
+
   if (state.tab === 'profile') {
     renderProfile();
     return;
@@ -1355,6 +1616,16 @@ function bindEvents() {
     const btn = e.target.closest('.bottom-nav-item');
     if (!btn || btn.dataset.tab === state.tab) return;
     switchTab(btn.dataset.tab);
+  });
+
+  $('#record-wake-btn')?.addEventListener('click', () => recordSleepTime('wake'));
+  $('#record-bed-btn')?.addEventListener('click', () => recordSleepTime('bed'));
+
+  $('#view-sleep')?.addEventListener('click', (e) => {
+    const rangeBtn = e.target.closest('.sleep-range-btn');
+    if (!rangeBtn || rangeBtn.dataset.range === state.sleepChartRange) return;
+    state.sleepChartRange = rangeBtn.dataset.range === 'month' ? 'month' : 'week';
+    renderSleep();
   });
 
   $('#today-add-form').addEventListener('submit', (e) => {

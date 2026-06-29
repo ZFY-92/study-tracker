@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=19" />
+    <link rel="stylesheet" href="styles.css?v=20" />
     <title>学习进度</title>
   </head>
   <body>
@@ -96,6 +96,41 @@
           </div>
         </section>
 
+        <!-- 作息记录 -->
+        <section class="view" id="view-sleep" hidden>
+          <h2 class="view-title">作息记录</h2>
+          <p class="sleep-page-hint">点击按钮记录当前时间，查看每周与每月趋势</p>
+          <div class="sleep-today-card">
+            <p class="sleep-today-date" id="sleep-today-date"></p>
+            <div class="sleep-record-grid">
+              <div class="sleep-record-block wake">
+                <div class="sleep-record-label">🌅 起床</div>
+                <div class="sleep-record-time" id="sleep-wake-display">—</div>
+                <button type="button" class="btn btn-primary sleep-record-btn" id="record-wake-btn">记录起床</button>
+              </div>
+              <div class="sleep-record-block bed">
+                <div class="sleep-record-label">🌙 睡觉</div>
+                <div class="sleep-record-time" id="sleep-bed-display">—</div>
+                <button type="button" class="btn btn-primary sleep-record-btn bed-btn" id="record-bed-btn">记录睡觉</button>
+              </div>
+            </div>
+          </div>
+          <div class="sleep-chart-section">
+            <div class="sleep-chart-head">
+              <h3 class="sleep-section-title">趋势曲线</h3>
+              <div class="sleep-range-toggle" role="group" aria-label="图表范围">
+                <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
+                <button type="button" class="sleep-range-btn" data-range="month">每月</button>
+              </div>
+            </div>
+            <div class="sleep-charts" id="sleep-charts"></div>
+          </div>
+          <div class="sleep-history-section">
+            <h3 class="sleep-section-title">近期记录</h3>
+            <div class="sleep-history-table-wrap" id="sleep-history-wrap"></div>
+          </div>
+        </section>
+
         <!-- 任务日历 -->
         <section class="view" id="view-calendar" hidden>
           <h2 class="view-title">任务日历</h2>
@@ -169,6 +204,10 @@
         <button type="button" class="bottom-nav-item" data-tab="calendar">
           <span class="bottom-nav-icon" aria-hidden="true">📅</span>
           <span>日历</span>
+        </button>
+        <button type="button" class="bottom-nav-item" data-tab="sleep">
+          <span class="bottom-nav-icon" aria-hidden="true">🌙</span>
+          <span>作息</span>
         </button>
         <button type="button" class="bottom-nav-item" data-tab="profile">
           <span class="bottom-nav-icon" aria-hidden="true">👤</span>
@@ -247,6 +286,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=19" type="module"></script>
+    <script src="app.js?v=20" type="module"></script>
   </body>
 </html>
