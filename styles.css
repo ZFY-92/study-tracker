@@ -1945,6 +1945,41 @@ body {
   margin-top: 0.25rem;
 }
 
+.sleep-manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.sleep-manual-form input[type='time'] {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.sleep-manual-form input[type='time']:focus {
+  outline: 2px solid color-mix(in srgb, var(--primary) 35%, transparent);
+  border-color: var(--primary);
+}
+
+.sleep-delete-btn {
+  width: 100%;
+  margin-top: 0.15rem;
+  color: var(--danger);
+}
+
+.sleep-delete-btn:hover {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
 .sleep-record-btn.bed-btn {
   background: #6366f1;
 }
@@ -2091,6 +2126,48 @@ body {
 
 .sleep-history-table td:not(:first-child) {
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+
+.sleep-history-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sleep-history-time {
+  min-width: 2.75rem;
+}
+
+.sleep-history-delete-btn {
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.sleep-history-delete-btn:hover {
+  color: var(--danger);
+  background: #fef2f2;
+}
+
+.sleep-history-manual-form {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.sleep-history-manual-form input[type='time'] {
+  flex: 1;
+  min-width: 5.5rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: var(--bg-card);
+  color: var(--text);
 }
 
 @media (max-width: 480px) {

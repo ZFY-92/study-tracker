@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=20" />
+    <link rel="stylesheet" href="styles.css?v=21" />
     <title>学习进度</title>
   </head>
   <body>
@@ -99,19 +99,29 @@
         <!-- 作息记录 -->
         <section class="view" id="view-sleep" hidden>
           <h2 class="view-title">作息记录</h2>
-          <p class="sleep-page-hint">点击按钮记录当前时间，查看每周与每月趋势</p>
+          <p class="sleep-page-hint">点击按钮记录当前时间，或手动输入；支持删除已录入记录</p>
           <div class="sleep-today-card">
             <p class="sleep-today-date" id="sleep-today-date"></p>
             <div class="sleep-record-grid">
               <div class="sleep-record-block wake">
                 <div class="sleep-record-label">🌅 起床</div>
                 <div class="sleep-record-time" id="sleep-wake-display">—</div>
-                <button type="button" class="btn btn-primary sleep-record-btn" id="record-wake-btn">记录起床</button>
+                <button type="button" class="btn btn-primary sleep-record-btn" id="record-wake-btn">现在记录</button>
+                <form class="sleep-manual-form" id="wake-manual-form" data-type="wake">
+                  <input type="time" id="wake-manual-input" aria-label="手动输入起床时间" />
+                  <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
+                </form>
+                <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-wake-btn" data-type="wake" hidden>删除记录</button>
               </div>
               <div class="sleep-record-block bed">
                 <div class="sleep-record-label">🌙 睡觉</div>
                 <div class="sleep-record-time" id="sleep-bed-display">—</div>
-                <button type="button" class="btn btn-primary sleep-record-btn bed-btn" id="record-bed-btn">记录睡觉</button>
+                <button type="button" class="btn btn-primary sleep-record-btn bed-btn" id="record-bed-btn">现在记录</button>
+                <form class="sleep-manual-form" id="bed-manual-form" data-type="bed">
+                  <input type="time" id="bed-manual-input" aria-label="手动输入睡觉时间" />
+                  <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
+                </form>
+                <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-bed-btn" data-type="bed" hidden>删除记录</button>
               </div>
             </div>
           </div>
@@ -286,6 +296,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=20" type="module"></script>
+    <script src="app.js?v=21" type="module"></script>
   </body>
 </html>

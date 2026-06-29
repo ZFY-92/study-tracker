@@ -1,4 +1,4 @@
-const APP_VERSION = '20';
+const APP_VERSION = '21';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -267,15 +267,51 @@ function ensureSleepRecord(date = todayStr()) {
   return state.sleepRecords[date];
 }
 
-function recordSleepTime(type) {
-  const date = todayStr();
-  const time = nowTimeStr();
+function isValidTimeStr(value) {
+  return /^\d{2}:\d{2}$/.test(value);
+}
+
+function setSleepTime(date, type, time) {
+  if (!isValidTimeStr(time)) {
+    showToast('请输入有效时间');
+    return false;
+  }
+
   const record = ensureSleepRecord(date);
   const hadValue = !!record[type];
   record[type] = time;
   saveData();
-  showToast(hadValue ? `已更新${type === 'wake' ? '起床' : '睡觉'}时间为 ${time}` : `已记录${type === 'wake' ? '起床' : '睡觉'}时间 ${time}`);
+
+  const label = type === 'wake' ? '起床' : '睡觉';
+  showToast(hadValue ? `已更新${label}时间为 ${time}` : `已记录${label}时间 ${time}`);
   if (state.tab === 'sleep') renderSleep();
+  return true;
+}
+
+function deleteSleepTime(date, type) {
+  const record = state.sleepRecords[date];
+  if (!record?.[type]) return;
+
+  delete record[type];
+  if (!record.wake && !record.bed) {
+    delete state.sleepRecords[date];
+  }
+
+  saveData();
+  showToast(`已删除${type === 'wake' ? '起床' : '睡觉'}记录`);
+  if (state.tab === 'sleep') renderSleep();
+}
+
+function recordSleepTime(type) {
+  setSleepTime(todayStr(), type, nowTimeStr());
+}
+
+function saveManualSleepTime(date, type, time) {
+  if (!time) {
+    showToast('请先选择时间');
+    return;
+  }
+  setSleepTime(date, type, time);
 }
 
 function getSleepChartDates(range = state.sleepChartRange) {
@@ -391,6 +427,25 @@ function buildSleepTimeChart({ title, color, dates, field, forBed }) {
   `;
 }
 
+function renderSleepHistoryCell(date, type, value) {
+  const label = type === 'wake' ? '起床' : '睡觉';
+  if (value) {
+    return `
+      <span class="sleep-history-value">
+        <span class="sleep-history-time">${value}</span>
+        <button type="button" class="icon-btn sleep-history-delete-btn" data-date="${date}" data-type="${type}" aria-label="删除${label}">✕</button>
+      </span>
+    `;
+  }
+
+  return `
+    <form class="sleep-history-manual-form" data-date="${date}" data-type="${type}">
+      <input type="time" required aria-label="补录${label}时间" />
+      <button type="submit" class="btn btn-ghost btn-sm">保存</button>
+    </form>
+  `;
+}
+
 function renderSleep() {
   const today = todayStr();
   const record = state.sleepRecords[today] || {};
@@ -407,6 +462,11 @@ function renderSleep() {
 
   const wakeEl = $('#sleep-wake-display');
   const bedEl = $('#sleep-bed-display');
+  const wakeInput = $('#wake-manual-input');
+  const bedInput = $('#bed-manual-input');
+  const wakeDelete = $('#delete-wake-btn');
+  const bedDelete = $('#delete-bed-btn');
+
   if (wakeEl) {
     wakeEl.textContent = record.wake || '—';
     wakeEl.classList.toggle('has-value', !!record.wake);
@@ -415,6 +475,14 @@ function renderSleep() {
     bedEl.textContent = record.bed || '—';
     bedEl.classList.toggle('has-value', !!record.bed);
   }
+  if (wakeInput && document.activeElement !== wakeInput) {
+    wakeInput.value = record.wake || '';
+  }
+  if (bedInput && document.activeElement !== bedInput) {
+    bedInput.value = record.bed || '';
+  }
+  if (wakeDelete) wakeDelete.hidden = !record.wake;
+  if (bedDelete) bedDelete.hidden = !record.bed;
 
   $$('.sleep-range-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.range === state.sleepChartRange);
@@ -448,8 +516,8 @@ function renderSleep() {
                 return `
                   <tr>
                     <td>${label}</td>
-                    <td>${r.wake || '—'}</td>
-                    <td>${r.bed || '—'}</td>
+                    <td>${renderSleepHistoryCell(date, 'wake', r.wake)}</td>
+                    <td>${renderSleepHistoryCell(date, 'bed', r.bed)}</td>
                   </tr>
                 `;
               })
@@ -1621,11 +1689,33 @@ function bindEvents() {
   $('#record-wake-btn')?.addEventListener('click', () => recordSleepTime('wake'));
   $('#record-bed-btn')?.addEventListener('click', () => recordSleepTime('bed'));
 
+  $('#view-sleep')?.addEventListener('submit', (e) => {
+    const form = e.target.closest('.sleep-manual-form, .sleep-history-manual-form');
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector('input[type="time"]');
+    const date = form.dataset.date || todayStr();
+    const type = form.dataset.type;
+    if (type !== 'wake' && type !== 'bed') return;
+    saveManualSleepTime(date, type, input?.value || '');
+  });
+
   $('#view-sleep')?.addEventListener('click', (e) => {
     const rangeBtn = e.target.closest('.sleep-range-btn');
-    if (!rangeBtn || rangeBtn.dataset.range === state.sleepChartRange) return;
-    state.sleepChartRange = rangeBtn.dataset.range === 'month' ? 'month' : 'week';
-    renderSleep();
+    if (rangeBtn) {
+      if (rangeBtn.dataset.range === state.sleepChartRange) return;
+      state.sleepChartRange = rangeBtn.dataset.range === 'month' ? 'month' : 'week';
+      renderSleep();
+      return;
+    }
+
+    const deleteBtn = e.target.closest('.sleep-delete-btn, .sleep-history-delete-btn');
+    if (deleteBtn) {
+      const date = deleteBtn.dataset.date || todayStr();
+      const type = deleteBtn.dataset.type;
+      if (type !== 'wake' && type !== 'bed') return;
+      deleteSleepTime(date, type);
+    }
   });
 
   $('#today-add-form').addEventListener('submit', (e) => {
