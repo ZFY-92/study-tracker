@@ -1,4 +1,4 @@
-const APP_VERSION = '29';
+const APP_VERSION = '30';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -12,7 +12,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -31,6 +31,9 @@ let state = {
   sleepPanel: 'record',
   todayCalendarOpen: false,
   expandedSubtaskParentId: null,
+  editingGoalTaskId: null,
+  editingDailyTaskId: null,
+  editingDailySubTask: null,
 };
 
 let editingGoalId = null;
@@ -1125,6 +1128,9 @@ function deleteDailySubTask(parentId, subId) {
 
   parent.subtasks = parent.subtasks.filter((s) => s.id !== subId);
   if (parent.subtasks.length === 0) delete parent.subtasks;
+  if (state.editingDailySubTask?.parentId === parentId && state.editingDailySubTask?.subId === subId) {
+    state.editingDailySubTask = null;
+  }
   syncParentFromSubtasks(parent);
   saveData();
   renderToday();
@@ -1138,9 +1144,73 @@ function deleteDailyTask(taskId) {
 
   tasks.splice(idx, 1);
   if (tasks.length === 0) delete state.dailyTasks[getSelectedDailyDate()];
+  if (state.editingDailyTaskId === taskId) state.editingDailyTaskId = null;
+  if (state.expandedSubtaskParentId === taskId) state.expandedSubtaskParentId = null;
   saveData();
   renderToday();
   showToast('任务已删除');
+}
+
+function updateGoalTaskTitle(goalId, taskId, title) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  const goal = state.goals.find((g) => g.id === goalId);
+  const task = goal?.tasks.find((t) => t.id === taskId);
+  if (!task) return;
+
+  task.title = trimmed;
+  goal.updatedAt = new Date().toISOString();
+  state.editingGoalTaskId = null;
+  saveData();
+  render();
+  showToast('节点已更新');
+}
+
+function updateDailyTaskTitle(taskId, title) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  const task = ensureDailyTasks(getSelectedDailyDate()).find((t) => t.id === taskId);
+  if (!task) return;
+
+  task.title = trimmed;
+  state.editingDailyTaskId = null;
+  saveData();
+  renderToday();
+  showToast('任务已更新');
+}
+
+function updateDailySubTaskTitle(parentId, subId, title) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  const parent = ensureDailyTasks(getSelectedDailyDate()).find((t) => t.id === parentId);
+  const sub = parent?.subtasks?.find((s) => s.id === subId);
+  if (!sub) return;
+
+  sub.title = trimmed;
+  state.editingDailySubTask = null;
+  saveData();
+  renderToday();
+  showToast('子任务已更新');
+}
+
+function clearTodayEditingState() {
+  state.editingDailyTaskId = null;
+  state.editingDailySubTask = null;
+  state.expandedSubtaskParentId = null;
+}
+
+function focusInlineEditInput(container) {
+  if (!container) return;
+  requestAnimationFrame(() => {
+    const input = container.querySelector('.inline-edit-form:not([hidden]) .inline-edit-input');
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  });
 }
 
 function getGoalTitle(goalId) {
@@ -1219,6 +1289,16 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function renderInlineEditForm(value, attrs = '') {
+  return `
+    <form class="inline-edit-form" ${attrs}>
+      <input type="text" class="inline-edit-input" name="title" value="${escapeHtml(value)}" maxlength="80" required />
+      <button type="submit" class="btn btn-primary btn-sm">保存</button>
+      <button type="button" class="btn btn-ghost btn-sm cancel-inline-edit-btn">取消</button>
+    </form>
+  `;
 }
 
 function filteredGoals() {
@@ -1580,17 +1660,29 @@ function renderGoals() {
 }
 
 function renderDetailTaskItem(goal, task) {
+  const isEditing = state.editingGoalTaskId === task.id;
+  const titleBlock = isEditing
+    ? renderInlineEditForm(task.title, `data-goal-id="${goal.id}" data-task-id="${task.id}"`)
+    : `<span class="task-title">${escapeHtml(task.title)}</span>`;
+
   return `
-    <div class="task-item${task.completed ? ' completed' : ''}" data-task-id="${task.id}">
+    <div class="task-item${task.completed ? ' completed' : ''}${isEditing ? ' is-editing' : ''}" data-task-id="${task.id}">
       <label class="task-check">
-        <input type="checkbox" class="task-toggle" data-goal-id="${goal.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <input type="checkbox" class="task-toggle" data-goal-id="${goal.id}" data-task-id="${task.id}" ${task.completed ? 'checked' : ''} ${isEditing ? 'disabled' : ''} />
         <span class="task-checkmark"></span>
       </label>
       <div class="task-body">
-        <span class="task-title">${escapeHtml(task.title)}</span>
-        ${task.completed && task.completedAt ? `<span class="task-done-date">完成于 ${task.completedAt.slice(0, 10)}</span>` : ''}
+        ${titleBlock}
+        ${!isEditing && task.completed && task.completedAt ? `<span class="task-done-date">完成于 ${task.completedAt.slice(0, 10)}</span>` : ''}
       </div>
-      <button type="button" class="icon-btn delete-task-btn" data-goal-id="${goal.id}" data-task-id="${task.id}" aria-label="删除节点">✕</button>
+      <div class="task-item-actions">
+        ${
+          !isEditing
+            ? `<button type="button" class="icon-btn edit-task-btn" data-goal-id="${goal.id}" data-task-id="${task.id}" aria-label="编辑节点" title="编辑">✎</button>`
+            : ''
+        }
+        <button type="button" class="icon-btn delete-task-btn" data-goal-id="${goal.id}" data-task-id="${task.id}" aria-label="删除节点">✕</button>
+      </div>
     </div>
   `;
 }
@@ -1655,6 +1747,8 @@ function renderGoalDetail() {
       </div>
     </div>
   `;
+
+  focusInlineEditInput(container);
 }
 
 function groupTodayTasksForDisplay(tasks) {
@@ -1705,16 +1799,27 @@ function countTasksProgress(tasks) {
 }
 
 function renderTodaySubtaskItem(parentId, sub) {
+  const isEditing =
+    state.editingDailySubTask?.parentId === parentId && state.editingDailySubTask?.subId === sub.id;
+  const titleBlock = isEditing
+    ? renderInlineEditForm(sub.title, `data-parent-id="${parentId}" data-sub-id="${sub.id}" data-edit-type="subtask"`)
+    : `<span class="task-title">${escapeHtml(sub.title)}</span>`;
+
   return `
-    <div class="today-task-item sub-node${sub.completed ? ' completed' : ''}" data-parent-id="${parentId}" data-sub-id="${sub.id}">
+    <div class="today-task-item sub-node${sub.completed ? ' completed' : ''}${isEditing ? ' is-editing' : ''}" data-parent-id="${parentId}" data-sub-id="${sub.id}">
       <label class="task-check">
-        <input type="checkbox" class="today-subtask-toggle" data-parent-id="${parentId}" data-sub-id="${sub.id}" ${sub.completed ? 'checked' : ''} />
+        <input type="checkbox" class="today-subtask-toggle" data-parent-id="${parentId}" data-sub-id="${sub.id}" ${sub.completed ? 'checked' : ''} ${isEditing ? 'disabled' : ''} />
         <span class="task-checkmark"></span>
       </label>
-      <div class="task-body">
-        <span class="task-title">${escapeHtml(sub.title)}</span>
+      <div class="task-body">${titleBlock}</div>
+      <div class="today-task-item-actions">
+        ${
+          !isEditing
+            ? `<button type="button" class="icon-btn edit-subtask-btn" data-parent-id="${parentId}" data-sub-id="${sub.id}" aria-label="编辑子任务" title="编辑">✎</button>`
+            : ''
+        }
+        <button type="button" class="icon-btn delete-subtask-btn" data-parent-id="${parentId}" data-sub-id="${sub.id}" aria-label="删除子任务">✕</button>
       </div>
-      <button type="button" class="icon-btn delete-subtask-btn" data-parent-id="${parentId}" data-sub-id="${sub.id}" aria-label="删除子任务">✕</button>
     </div>
   `;
 }
@@ -1724,6 +1829,7 @@ function renderTodayTaskBlock(task) {
   const progress = getDailyTaskProgress(task);
   const parentDone = isDailyTaskDone(task);
   const showForm = state.expandedSubtaskParentId === task.id;
+  const isEditing = state.editingDailyTaskId === task.id;
   const carriedLabel = task.carriedFrom
     ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
     : '';
@@ -1733,24 +1839,35 @@ function renderTodayTaskBlock(task) {
     ? `<span class="task-check task-check-placeholder" aria-hidden="true"></span>`
     : `
       <label class="task-check">
-        <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${isEditing ? 'disabled' : ''} />
         <span class="task-checkmark"></span>
       </label>
     `;
 
+  const titleBlock = isEditing
+    ? renderInlineEditForm(task.title, `data-task-id="${task.id}" data-edit-type="task"`)
+    : `
+      <div class="today-task-title-row">
+        <span class="task-title">${escapeHtml(task.title)}</span>
+        ${hasSubs ? `<span class="today-task-progress">${progress.completed}/${progress.total}</span>` : ''}
+      </div>
+    `;
+
   return `
-    <div class="today-task-block${parentDone ? ' completed' : ''}" data-id="${task.id}">
+    <div class="today-task-block${parentDone ? ' completed' : ''}${isEditing ? ' is-editing' : ''}" data-id="${task.id}">
       <div class="today-task-item parent-node${hasSubs ? ' has-children' : ''}${!hasSubs && task.completed ? ' completed' : ''}">
         ${parentCheck}
         <div class="task-body">
-          <div class="today-task-title-row">
-            <span class="task-title">${escapeHtml(task.title)}</span>
-            ${hasSubs ? `<span class="today-task-progress">${progress.completed}/${progress.total}</span>` : ''}
-          </div>
-          ${tags}
+          ${titleBlock}
+          ${!isEditing ? tags : ''}
         </div>
         <div class="today-task-item-actions">
-          <button type="button" class="icon-btn add-subtask-btn" data-id="${task.id}" aria-label="添加子任务" title="分解子任务">+</button>
+          ${
+            !isEditing
+              ? `<button type="button" class="icon-btn edit-today-task-btn" data-id="${task.id}" aria-label="编辑任务" title="编辑">✎</button>`
+              : ''
+          }
+          <button type="button" class="icon-btn add-subtask-btn" data-id="${task.id}" aria-label="添加子任务" title="分解子任务" ${isEditing ? 'disabled' : ''}>+</button>
           <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
         </div>
       </div>
@@ -1936,6 +2053,7 @@ function renderToday() {
   if (list) {
     list.innerHTML =
       renderTodayTaskSection(pending, '待完成') + renderTodayTaskSection(done, '已完成');
+    focusInlineEditInput(list);
   }
 }
 
@@ -2231,6 +2349,7 @@ function deleteTask(goalId, taskId) {
 
   goal.tasks = goal.tasks.filter((t) => t.id !== taskId);
   goal.updatedAt = new Date().toISOString();
+  if (state.editingGoalTaskId === taskId) state.editingGoalTaskId = null;
 
   saveData();
   render();
@@ -2387,9 +2506,38 @@ function bindEvents() {
   });
 
   $('#today-task-list').addEventListener('click', (e) => {
+    const cancelEditBtn = e.target.closest('.cancel-inline-edit-btn');
+    if (cancelEditBtn) {
+      clearTodayEditingState();
+      renderToday();
+      return;
+    }
+
+    const editTaskBtn = e.target.closest('.edit-today-task-btn');
+    if (editTaskBtn) {
+      clearTodayEditingState();
+      state.editingDailyTaskId = editTaskBtn.dataset.id;
+      renderToday();
+      return;
+    }
+
+    const editSubBtn = e.target.closest('.edit-subtask-btn');
+    if (editSubBtn) {
+      clearTodayEditingState();
+      state.editingDailySubTask = {
+        parentId: editSubBtn.dataset.parentId,
+        subId: editSubBtn.dataset.subId,
+      };
+      renderToday();
+      return;
+    }
+
     const addBtn = e.target.closest('.add-subtask-btn');
     if (addBtn) {
+      if (addBtn.disabled) return;
       const id = addBtn.dataset.id;
+      state.editingDailyTaskId = null;
+      state.editingDailySubTask = null;
       state.expandedSubtaskParentId = state.expandedSubtaskParentId === id ? null : id;
       renderToday();
       return;
@@ -2416,11 +2564,24 @@ function bindEvents() {
   });
 
   $('#today-task-list').addEventListener('submit', (e) => {
-    const form = e.target.closest('.today-subtask-form');
-    if (!form) return;
+    const subForm = e.target.closest('.today-subtask-form');
+    if (subForm) {
+      e.preventDefault();
+      const input = subForm.querySelector('input[name="title"]');
+      addDailySubTask(subForm.dataset.parentId, input?.value || '');
+      return;
+    }
+
+    const editForm = e.target.closest('.inline-edit-form');
+    if (!editForm) return;
     e.preventDefault();
-    const input = form.querySelector('input[name="title"]');
-    addDailySubTask(form.dataset.parentId, input?.value || '');
+    const input = editForm.querySelector('input[name="title"]');
+    const title = input?.value || '';
+    if (editForm.dataset.editType === 'subtask') {
+      updateDailySubTaskTitle(editForm.dataset.parentId, editForm.dataset.subId, title);
+      return;
+    }
+    updateDailyTaskTitle(editForm.dataset.taskId, title);
   });
 
   $('#open-import-modal-btn').addEventListener('click', openImportModal);
@@ -2499,11 +2660,19 @@ function bindEvents() {
   $('#delete-goal-btn').addEventListener('click', deleteGoal);
 
   $('#goal-detail-body').addEventListener('submit', (e) => {
-    if (e.target.id !== 'detail-add-task-form') return;
+    if (e.target.id === 'detail-add-task-form') {
+      e.preventDefault();
+      const input = e.target.querySelector('input[name="title"]');
+      addTaskToGoal(state.selectedGoalId, input.value);
+      input.value = '';
+      return;
+    }
+
+    const form = e.target.closest('.inline-edit-form');
+    if (!form?.dataset.goalId || !form.dataset.taskId) return;
     e.preventDefault();
-    const input = e.target.querySelector('input[name="title"]');
-    addTaskToGoal(state.selectedGoalId, input.value);
-    input.value = '';
+    const input = form.querySelector('input[name="title"]');
+    updateGoalTaskTitle(form.dataset.goalId, form.dataset.taskId, input?.value || '');
   });
 
   $('#goal-detail-body').addEventListener('change', (e) => {
@@ -2516,6 +2685,20 @@ function bindEvents() {
     if (pinBtn) {
       e.stopPropagation();
       setPinnedGoal(pinBtn.dataset.id);
+      return;
+    }
+
+    const cancelBtn = e.target.closest('.cancel-inline-edit-btn');
+    if (cancelBtn) {
+      state.editingGoalTaskId = null;
+      renderGoalDetail();
+      return;
+    }
+
+    const editBtn = e.target.closest('.edit-task-btn');
+    if (editBtn) {
+      state.editingGoalTaskId = editBtn.dataset.taskId;
+      renderGoalDetail();
       return;
     }
 

@@ -1211,6 +1211,56 @@ body {
   color: var(--text-muted);
 }
 
+.task-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.task-item.is-editing {
+  background: var(--bg-hover);
+}
+
+.inline-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+  width: 100%;
+}
+
+.inline-edit-input {
+  flex: 1;
+  min-width: 8rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: var(--bg-card);
+}
+
+.inline-edit-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.edit-task-btn,
+.edit-today-task-btn,
+.edit-subtask-btn {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.edit-task-btn:hover,
+.edit-today-task-btn:hover,
+.edit-subtask-btn:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, #fff);
+}
+
 .task-check {
   position: relative;
   display: flex;
@@ -1857,6 +1907,11 @@ body {
   opacity: 0.88;
 }
 
+.today-task-block.is-editing,
+.today-task-item.sub-node.is-editing {
+  background: var(--bg-hover);
+}
+
 .today-task-item.parent-node {
   border-left: 3px solid color-mix(in srgb, var(--goal-color, var(--primary)) 55%, var(--border));
   padding: 0.55rem 0.4rem 0.55rem 0.5rem;
@@ -1904,6 +1959,11 @@ body {
 
 .add-subtask-btn:hover {
   background: color-mix(in srgb, var(--primary) 12%, #fff);
+}
+
+.add-subtask-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .task-check-placeholder {
