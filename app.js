@@ -1,4 +1,4 @@
-const APP_VERSION = '35';
+const APP_VERSION = '36';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -2208,6 +2208,7 @@ function renderToday() {
   if (gymReminder && gymReminderText) {
     const showReminder = isToday && shouldShowGymReminder();
     gymReminder.hidden = !showReminder;
+    gymReminder.style.display = showReminder ? '' : 'none';
     if (showReminder) gymReminderText.textContent = getGymReminderMessage();
   }
 

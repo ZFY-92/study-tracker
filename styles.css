@@ -1589,9 +1589,8 @@ body {
   background: var(--primary);
 }
 
-.calendar-legend-gym {
-  font-size: 0.75rem;
-  line-height: 1;
+.calendar-legend-dot.gym {
+  background: #22c55e;
 }
 
 .daily-calendar-page {
@@ -1692,6 +1691,30 @@ body {
 .calendar-day.future {
   color: #cbd5e1;
   cursor: not-allowed;
+}
+
+.calendar-day.has-gym:not(.selected):not(.future) {
+  background: color-mix(in srgb, #22c55e 28%, #fff);
+  color: #14532d;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #16a34a 45%, transparent);
+}
+
+.calendar-day.has-gym:not(.selected):not(.future):hover {
+  background: color-mix(in srgb, #22c55e 38%, #fff);
+}
+
+.calendar-day.has-gym.today:not(.selected) {
+  box-shadow: inset 0 0 0 2px #16a34a;
+}
+
+.calendar-day.has-gym.selected {
+  background: #16a34a;
+  color: #fff;
+  box-shadow: none;
+}
+
+.calendar-day.has-gym.selected .calendar-day-dot {
+  background: #fff;
 }
 
 .calendar-day.has-tasks.partial:not(.selected) .calendar-day-dot {
@@ -1830,7 +1853,7 @@ body {
   color: #15803d;
 }
 
-.today-gym-reminder {
+.today-gym-reminder:not([hidden]) {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
@@ -1840,6 +1863,10 @@ body {
   border: 1px solid #fcd34d;
   background: #fffbeb;
   color: #92400e;
+}
+
+.today-gym-reminder[hidden] {
+  display: none !important;
 }
 
 .today-gym-reminder-icon {
