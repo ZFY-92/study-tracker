@@ -1428,12 +1428,12 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.12rem;
-  padding: 0.45rem 0.12rem 0.55rem;
+  gap: 0.15rem;
+  padding: 0.5rem 0.2rem 0.6rem;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.6rem;
+  font-size: 0.68rem;
   font-family: inherit;
   cursor: pointer;
   transition: color 0.15s;
@@ -1445,7 +1445,7 @@ body {
 }
 
 .bottom-nav-icon {
-  font-size: 1.05rem;
+  font-size: 1.12rem;
   line-height: 1;
 }
 
@@ -1469,6 +1469,36 @@ body {
   margin: -0.5rem 0 0.85rem;
   font-size: 0.85rem;
   color: var(--text-muted);
+}
+
+.today-calendar-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.85rem 0.85rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+}
+
+.today-calendar-card .calendar-page-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+}
+
+.today-calendar-card .daily-calendar-page {
+  padding: 0;
+}
+
+.today-calendar-card .calendar-legend {
+  margin-top: 0.6rem;
+  margin-bottom: 0;
+  padding: 0.5rem 0.65rem;
+}
+
+#toggle-today-calendar-btn.active {
+  background: color-mix(in srgb, var(--primary) 12%, #fff);
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 25%, var(--border));
 }
 
 .calendar-legend {
@@ -1852,8 +1882,8 @@ body {
   }
 
   .bottom-nav-item {
-    font-size: 0.62rem;
-    padding: 0.45rem 0.15rem 0.55rem;
+    font-size: 0.7rem;
+    padding: 0.5rem 0.25rem 0.6rem;
   }
 
   .form-grid {
@@ -1878,8 +1908,8 @@ body {
 
 /* 作息记录 */
 .main.main-sleep {
-  padding-top: 0.5rem;
-  padding-bottom: calc(4.25rem + var(--safe-bottom));
+  padding-top: 0.35rem;
+  padding-bottom: calc(4rem + var(--safe-bottom));
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1897,9 +1927,9 @@ body {
 .sleep-subnav {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.35rem;
-  padding: 0.2rem;
-  margin-bottom: 0.65rem;
+  gap: 0.25rem;
+  padding: 0.15rem;
+  margin-bottom: 0.45rem;
   background: var(--bg-hover);
   border-radius: var(--radius);
   flex-shrink: 0;
@@ -1909,14 +1939,14 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-family: inherit;
   font-weight: 600;
-  padding: 0.5rem 0.35rem;
+  padding: 0.4rem 0.3rem;
   border-radius: calc(var(--radius-sm) + 2px);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
@@ -1954,9 +1984,19 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
 }
 
 #sleep-panel-record .sleep-today-card {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+#sleep-panel-chart {
+  justify-content: stretch;
+}
+
+#sleep-panel-chart .sleep-chart-section-embedded {
   flex: 1;
   min-height: 0;
 }
@@ -1966,8 +2006,8 @@ body {
 }
 
 .sleep-duration-strip {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
   border-top: 1px dashed var(--border);
   text-align: center;
 }
@@ -2016,6 +2056,19 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding: 0.55rem 0.5rem 0.45rem;
+}
+
+.sleep-chart-section-embedded .sleep-chart-title {
+  margin-bottom: 0.25rem;
+}
+
+.sleep-chart-detail {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 1em;
 }
 
 .sleep-chart-section-embedded .sleep-chart-svg-wrap {
@@ -2043,17 +2096,13 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.85rem 0.75rem;
+  padding: 0.65rem 0.6rem 0.7rem;
   box-shadow: var(--shadow);
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .sleep-today-date {
-  margin: 0 0 0.55rem;
-  font-size: 0.82rem;
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
   color: var(--text-muted);
   text-align: center;
   flex-shrink: 0;
@@ -2062,15 +2111,15 @@ body {
 .sleep-record-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.45rem;
 }
 
 .sleep-record-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.45rem;
-  padding: 1rem 0.65rem;
+  gap: 0.28rem;
+  padding: 0.55rem 0.4rem 0.6rem;
   border-radius: var(--radius-sm);
   background: var(--bg-hover);
 }
@@ -2089,11 +2138,11 @@ body {
 }
 
 .sleep-record-time {
-  font-size: 1.75rem;
+  font-size: 1.45rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .sleep-record-time.has-value {
@@ -2102,15 +2151,18 @@ body {
 
 .sleep-record-btn {
   width: 100%;
-  margin-top: 0.25rem;
+  margin-top: 0.1rem;
+  padding: 0.38rem 0.45rem;
+  font-size: 0.78rem;
 }
 
 .sleep-manual-form {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.28rem;
   width: 100%;
-  margin-top: 0.35rem;
+  margin-top: 0.2rem;
 }
 
 .sleep-manual-form input[type='time'] {
@@ -2473,14 +2525,6 @@ body {
 .sleep-chart-point.active .sleep-chart-point-dot {
   stroke: var(--text);
   stroke-width: 1.5;
-}
-
-.sleep-chart-detail {
-  margin: 0.45rem 0 0;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  text-align: center;
-  min-height: 1.25em;
 }
 
 .sleep-axis-label {

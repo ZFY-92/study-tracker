@@ -1,4 +1,4 @@
-const APP_VERSION = '26';
+const APP_VERSION = '27';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -9,9 +9,9 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {{ wake?: string, bed?: string, duration?: number }} SleepDayRecord */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
-/** @typedef {'learning' | 'today' | 'calendar' | 'sleep' | 'profile'} TabName */
+/** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history' }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -28,6 +28,7 @@ let state = {
   sleepChartRange: 'week',
   sleepChartType: 'wake',
   sleepPanel: 'record',
+  todayCalendarOpen: false,
 };
 
 let editingGoalId = null;
@@ -893,6 +894,7 @@ function setSelectedDailyDate(dateStr) {
 function selectDateAndGoToday(dateStr) {
   state.selectedDailyDate = dateStr;
   state.calendarMonth = dateStr.slice(0, 7);
+  state.todayCalendarOpen = false;
   switchTab('today');
 }
 
@@ -1131,7 +1133,7 @@ function navigateTo(view, options = {}) {
 
 function switchTab(tab) {
   state.tab = tab;
-  if ((tab === 'today' || tab === 'calendar') && state.selectedDailyDate > todayStr()) {
+  if (tab === 'today' && state.selectedDailyDate > todayStr()) {
     state.selectedDailyDate = todayStr();
     state.calendarMonth = todayStr().slice(0, 7);
   }
@@ -1223,16 +1225,6 @@ function updateHeader() {
     return;
   }
 
-  if (state.tab === 'calendar') {
-    backBtn.hidden = true;
-    addBtn.hidden = true;
-    editBtn.hidden = true;
-    pageTitle.textContent = '任务日历';
-    pageSubtitle.textContent = formatDateLabel(getSelectedDailyDate());
-    pageSubtitle.hidden = false;
-    return;
-  }
-
   if (state.tab === 'sleep') {
     backBtn.hidden = true;
     addBtn.hidden = true;
@@ -1294,7 +1286,6 @@ function showActiveView() {
   $('#view-goals').hidden = !isLearning || state.view !== 'goals';
   $('#view-goal-detail').hidden = !isLearning || state.view !== 'goal-detail';
   $('#view-today').hidden = state.tab !== 'today';
-  $('#view-calendar').hidden = state.tab !== 'calendar';
   $('#view-sleep').hidden = state.tab !== 'sleep';
   $('#view-profile').hidden = state.tab !== 'profile';
   $('.main')?.classList.toggle('main-sleep', state.tab === 'sleep');
@@ -1667,6 +1658,15 @@ function renderToday() {
   }
   if (importBtn) importBtn.hidden = !isToday;
 
+  const calendarCard = $('#today-calendar-card');
+  const calendarToggle = $('#toggle-today-calendar-btn');
+  if (calendarToggle) {
+    calendarToggle.classList.toggle('active', state.todayCalendarOpen);
+    calendarToggle.textContent = state.todayCalendarOpen ? '收起日历' : '📅 任务日历';
+  }
+  if (calendarCard) calendarCard.hidden = !state.todayCalendarOpen;
+  if (state.todayCalendarOpen) renderDailyCalendar();
+
   if (tasks.length === 0) {
     if (list) list.innerHTML = '';
     if (empty) {
@@ -1674,7 +1674,7 @@ function renderToday() {
       empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
       empty.querySelector('p').textContent = isToday
         ? '手动添加，或从学习目标里导入任务节点'
-        : '可以补充任务，或切换到「日历」查看其他日期';
+        : '可以补充任务，或打开「任务日历」查看其他日期';
     }
     return;
   }
@@ -1700,10 +1700,6 @@ function renderToday() {
       }
     `;
   }
-}
-
-function renderCalendar() {
-  renderDailyCalendar();
 }
 
 function renderImportModal() {
@@ -1800,11 +1796,6 @@ function render() {
 
   if (state.tab === 'today') {
     renderToday();
-    return;
-  }
-
-  if (state.tab === 'calendar') {
-    renderCalendar();
     return;
   }
 
@@ -2125,7 +2116,7 @@ function bindEvents() {
       const [year, month] = state.calendarMonth.split('-').map(Number);
       const d = new Date(year, month - 2, 1);
       state.calendarMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      renderCalendar();
+      renderDailyCalendar();
       return;
     }
 
@@ -2135,7 +2126,7 @@ function bindEvents() {
       const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (nextMonth > todayStr().slice(0, 7)) return;
       state.calendarMonth = nextMonth;
-      renderCalendar();
+      renderDailyCalendar();
       return;
     }
 
@@ -2161,6 +2152,12 @@ function bindEvents() {
   });
 
   $('#open-import-modal-btn').addEventListener('click', openImportModal);
+
+  $('#toggle-today-calendar-btn')?.addEventListener('click', () => {
+    state.todayCalendarOpen = !state.todayCalendarOpen;
+    renderToday();
+  });
+
   $('#import-overlay-backdrop').addEventListener('click', closeImportOverlay);
   $('#close-import-modal').addEventListener('click', closeImportOverlay);
   $('#cancel-import-btn').addEventListener('click', closeImportOverlay);
@@ -2473,7 +2470,7 @@ function setupPWA() {
     const added = rolloverIncompleteDailyTasks({ silent: true });
     if (added > 0) {
       showToast(`已将昨日 ${added} 条未完成任务加入今天`);
-      if (state.tab === 'today' || state.tab === 'calendar') render();
+      if (state.tab === 'today') render();
     }
   });
 

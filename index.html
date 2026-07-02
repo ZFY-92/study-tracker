@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="stylesheet" href="styles.css?v=27" />
     <title>学习进度</title>
   </head>
   <body>
@@ -87,7 +87,17 @@
               <button type="submit" class="btn btn-primary btn-sm">添加</button>
             </form>
             <button type="button" class="btn btn-ghost btn-sm" id="open-import-modal-btn">从目标导入</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="toggle-today-calendar-btn">📅 任务日历</button>
           </div>
+          <article class="today-calendar-card" id="today-calendar-card" hidden>
+            <p class="calendar-page-hint">点击日期查看该天的任务</p>
+            <div class="today-calendar-wrap" id="today-calendar-wrap"></div>
+            <div class="calendar-legend">
+              <span class="calendar-legend-item"><span class="calendar-legend-dot partial"></span>部分完成</span>
+              <span class="calendar-legend-item"><span class="calendar-legend-dot done"></span>全部完成</span>
+              <span class="calendar-legend-item"><span class="calendar-legend-dot has"></span>有任务</span>
+            </div>
+          </article>
           <div class="today-task-list" id="today-task-list"></div>
           <div class="empty-state" id="today-empty-state" hidden>
             <div class="empty-icon">📝</div>
@@ -176,18 +186,6 @@
           </div>
         </section>
 
-        <!-- 任务日历 -->
-        <section class="view" id="view-calendar" hidden>
-          <h2 class="view-title">任务日历</h2>
-          <p class="calendar-page-hint">点击日期，跳转到该天的任务列表</p>
-          <div class="today-calendar-wrap" id="today-calendar-wrap"></div>
-          <div class="calendar-legend">
-            <span class="calendar-legend-item"><span class="calendar-legend-dot partial"></span>部分完成</span>
-            <span class="calendar-legend-item"><span class="calendar-legend-dot done"></span>全部完成</span>
-            <span class="calendar-legend-item"><span class="calendar-legend-dot has"></span>有任务</span>
-          </div>
-        </section>
-
         <!-- 我的 -->
         <section class="view" id="view-profile" hidden>
           <div class="profile-cards">
@@ -245,10 +243,6 @@
         <button type="button" class="bottom-nav-item" data-tab="today">
           <span class="bottom-nav-icon" aria-hidden="true">📋</span>
           <span>今日</span>
-        </button>
-        <button type="button" class="bottom-nav-item" data-tab="calendar">
-          <span class="bottom-nav-icon" aria-hidden="true">📅</span>
-          <span>日历</span>
         </button>
         <button type="button" class="bottom-nav-item" data-tab="sleep">
           <span class="bottom-nav-icon" aria-hidden="true">🌙</span>
@@ -331,6 +325,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=26" type="module"></script>
+    <script src="app.js?v=27" type="module"></script>
   </body>
 </html>
