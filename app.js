@@ -1,17 +1,18 @@
-const APP_VERSION = '28';
+const APP_VERSION = '29';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
 /** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
-/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string }} DailyTask */
+/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string }} DailySubTask */
+/** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string, subtasks?: DailySubTask[] }} DailyTask */
 
 /** @typedef {{ wake?: string, bed?: string, duration?: number }} SleepDayRecord */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -29,6 +30,7 @@ let state = {
   sleepChartType: 'wake',
   sleepPanel: 'record',
   todayCalendarOpen: false,
+  expandedSubtaskParentId: null,
 };
 
 let editingGoalId = null;
@@ -139,17 +141,29 @@ function migrateDailyTasks(raw) {
   const result = {};
   for (const [date, tasks] of Object.entries(raw)) {
     if (!Array.isArray(tasks)) continue;
-    result[date] = tasks.map((task) => ({
-      id: task.id || uid(),
-      title: task.title || '',
-      completed: !!task.completed,
-      completedAt: task.completedAt || null,
-      createdAt: task.createdAt || new Date().toISOString(),
-      source: task.source === 'goal' ? 'goal' : 'custom',
-      goalId: task.goalId || undefined,
-      taskId: task.taskId || undefined,
-      carriedFrom: task.carriedFrom || undefined,
-    }));
+    result[date] = tasks.map((task) => {
+      const entry = {
+        id: task.id || uid(),
+        title: task.title || '',
+        completed: !!task.completed,
+        completedAt: task.completedAt || null,
+        createdAt: task.createdAt || new Date().toISOString(),
+        source: task.source === 'goal' ? 'goal' : 'custom',
+        goalId: task.goalId || undefined,
+        taskId: task.taskId || undefined,
+        carriedFrom: task.carriedFrom || undefined,
+      };
+      if (Array.isArray(task.subtasks) && task.subtasks.length) {
+        entry.subtasks = task.subtasks.map((sub) => ({
+          id: sub.id || uid(),
+          title: sub.title || '',
+          completed: !!sub.completed,
+          completedAt: sub.completedAt || null,
+          createdAt: sub.createdAt || entry.createdAt,
+        }));
+      }
+      return entry;
+    });
   }
   return result;
 }
@@ -212,7 +226,7 @@ function rolloverIncompleteDailyTasks(options = {}) {
   state.lastRolloverDate = today;
 
   const yesterday = yesterdayStr();
-  const incomplete = (state.dailyTasks[yesterday] || []).filter((t) => !t.completed);
+  const incomplete = (state.dailyTasks[yesterday] || []).filter((t) => !isDailyTaskDone(t));
 
   if (incomplete.length === 0) {
     saveData();
@@ -225,7 +239,8 @@ function rolloverIncompleteDailyTasks(options = {}) {
 
   for (const task of incomplete) {
     if (isDuplicateDailyTask(todayTasks, task)) continue;
-    todayTasks.push({
+    /** @type {DailyTask} */
+    const entry = {
       id: uid(),
       title: task.title,
       completed: false,
@@ -235,7 +250,17 @@ function rolloverIncompleteDailyTasks(options = {}) {
       goalId: task.goalId,
       taskId: task.taskId,
       carriedFrom: yesterday,
-    });
+    };
+    if (task.subtasks?.length) {
+      entry.subtasks = task.subtasks.map((sub) => ({
+        id: uid(),
+        title: sub.title,
+        completed: false,
+        completedAt: null,
+        createdAt: now,
+      }));
+    }
+    todayTasks.push(entry);
     added += 1;
   }
 
@@ -898,6 +923,33 @@ function selectDateAndGoToday(dateStr) {
   switchTab('today');
 }
 
+function getDailyTaskProgress(task) {
+  if (task.subtasks?.length) {
+    return {
+      total: task.subtasks.length,
+      completed: task.subtasks.filter((s) => s.completed).length,
+    };
+  }
+  return { total: 1, completed: task.completed ? 1 : 0 };
+}
+
+function isDailyTaskDone(task) {
+  if (task.subtasks?.length) return task.subtasks.every((s) => s.completed);
+  return task.completed;
+}
+
+function syncParentFromSubtasks(task) {
+  if (!task.subtasks?.length) return;
+  const allDone = task.subtasks.every((s) => s.completed);
+  task.completed = allDone;
+  task.completedAt = allDone ? task.completedAt || new Date().toISOString() : null;
+}
+
+function syncGoalDailyTask(task, date = getSelectedDailyDate()) {
+  if (task.source !== 'goal' || !task.goalId || !task.taskId || date !== todayStr()) return;
+  toggleTask(task.goalId, task.taskId, isDailyTaskDone(task), { silent: true });
+}
+
 function getDailyTasks(date = getSelectedDailyDate()) {
   return state.dailyTasks[date] || [];
 }
@@ -933,16 +985,28 @@ function formatDateLabel(dateStr) {
 
 function getDailyTaskStatsForDate(date = getSelectedDailyDate()) {
   const tasks = getDailyTasks(date);
-  const total = tasks.length;
-  const completed = tasks.filter((t) => t.completed).length;
-  return { total, completed };
+  let completed = 0;
+  let total = 0;
+  for (const task of tasks) {
+    const p = getDailyTaskProgress(task);
+    total += p.total;
+    completed += p.completed;
+  }
+  return { completed, total };
 }
 
 function getDailyTaskDayStatus(dateStr) {
   const tasks = state.dailyTasks[dateStr];
   if (!tasks?.length) return 'none';
-  const completed = tasks.filter((t) => t.completed).length;
-  if (completed === tasks.length) return 'done';
+  let total = 0;
+  let completed = 0;
+  for (const task of tasks) {
+    const p = getDailyTaskProgress(task);
+    total += p.total;
+    completed += p.completed;
+  }
+  if (completed === 0) return 'has';
+  if (completed === total) return 'done';
   return 'partial';
 }
 
@@ -1004,18 +1068,67 @@ function toggleDailyTask(taskId, completed) {
   const date = getSelectedDailyDate();
   const tasks = ensureDailyTasks(date);
   const task = tasks.find((t) => t.id === taskId);
-  if (!task) return;
+  if (!task || task.subtasks?.length) return;
 
   task.completed = completed;
   task.completedAt = completed ? date : null;
-
-  if (task.source === 'goal' && task.goalId && task.taskId && date === todayStr()) {
-    toggleTask(task.goalId, task.taskId, completed, { silent: true });
-  }
+  syncGoalDailyTask(task, date);
 
   saveData();
   renderToday();
   showToast(completed ? '任务已完成' : '已标记为未完成');
+}
+
+function addDailySubTask(parentId, title) {
+  const trimmed = title.trim();
+  if (!trimmed) return;
+
+  const tasks = ensureDailyTasks(getSelectedDailyDate());
+  const parent = tasks.find((t) => t.id === parentId);
+  if (!parent) return;
+
+  if (!parent.subtasks) parent.subtasks = [];
+  parent.subtasks.push({
+    id: uid(),
+    title: trimmed,
+    completed: false,
+    completedAt: null,
+    createdAt: new Date().toISOString(),
+  });
+  syncParentFromSubtasks(parent);
+  state.expandedSubtaskParentId = null;
+  saveData();
+  renderToday();
+  showToast('已添加子任务');
+}
+
+function toggleDailySubTask(parentId, subId, completed) {
+  const date = getSelectedDailyDate();
+  const tasks = ensureDailyTasks(date);
+  const parent = tasks.find((t) => t.id === parentId);
+  const sub = parent?.subtasks?.find((s) => s.id === subId);
+  if (!sub) return;
+
+  sub.completed = completed;
+  sub.completedAt = completed ? date : null;
+  syncParentFromSubtasks(parent);
+  syncGoalDailyTask(parent, date);
+
+  saveData();
+  renderToday();
+}
+
+function deleteDailySubTask(parentId, subId) {
+  const tasks = ensureDailyTasks(getSelectedDailyDate());
+  const parent = tasks.find((t) => t.id === parentId);
+  if (!parent?.subtasks) return;
+
+  parent.subtasks = parent.subtasks.filter((s) => s.id !== subId);
+  if (parent.subtasks.length === 0) delete parent.subtasks;
+  syncParentFromSubtasks(parent);
+  saveData();
+  renderToday();
+  showToast('子任务已删除');
 }
 
 function deleteDailyTask(taskId) {
@@ -1580,52 +1693,107 @@ function groupTodayTasksForDisplay(tasks) {
   return groups;
 }
 
-function renderTodayTaskItem(task, options = {}) {
-  const { nested = false } = options;
-  const goal = task.source === 'goal' && task.goalId ? state.goals.find((g) => g.id === task.goalId) : null;
-  const sourceLabel =
-    task.source === 'goal'
-      ? `<span class="today-task-source" style="--goal-color:${goal?.color || '#3b82f6'}">${escapeHtml(getGoalTitle(task.goalId))}</span>`
-      : `<span class="today-task-source custom">自定义</span>`;
-  const carriedLabel = task.carriedFrom
-    ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
-    : '';
-  const tags = nested
-    ? carriedLabel
-      ? `<span class="today-task-tags">${carriedLabel}</span>`
-      : ''
-    : `<span class="today-task-tags">${sourceLabel}${carriedLabel}</span>`;
+function countTasksProgress(tasks) {
+  let total = 0;
+  let completed = 0;
+  for (const task of tasks) {
+    const p = getDailyTaskProgress(task);
+    total += p.total;
+    completed += p.completed;
+  }
+  return { total, completed };
+}
 
+function renderTodaySubtaskItem(parentId, sub) {
   return `
-    <div class="today-task-item${task.completed ? ' completed' : ''}${nested ? ' sub-node' : ''}" data-id="${task.id}">
+    <div class="today-task-item sub-node${sub.completed ? ' completed' : ''}" data-parent-id="${parentId}" data-sub-id="${sub.id}">
       <label class="task-check">
-        <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <input type="checkbox" class="today-subtask-toggle" data-parent-id="${parentId}" data-sub-id="${sub.id}" ${sub.completed ? 'checked' : ''} />
         <span class="task-checkmark"></span>
       </label>
       <div class="task-body">
-        <span class="task-title">${escapeHtml(task.title)}</span>
-        ${tags}
+        <span class="task-title">${escapeHtml(sub.title)}</span>
       </div>
-      <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
+      <button type="button" class="icon-btn delete-subtask-btn" data-parent-id="${parentId}" data-sub-id="${sub.id}" aria-label="删除子任务">✕</button>
     </div>
   `;
 }
 
+function renderTodayTaskBlock(task) {
+  const hasSubs = !!task.subtasks?.length;
+  const progress = getDailyTaskProgress(task);
+  const parentDone = isDailyTaskDone(task);
+  const showForm = state.expandedSubtaskParentId === task.id;
+  const carriedLabel = task.carriedFrom
+    ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
+    : '';
+  const tags = carriedLabel ? `<span class="today-task-tags">${carriedLabel}</span>` : '';
+
+  const parentCheck = hasSubs
+    ? `<span class="task-check task-check-placeholder" aria-hidden="true"></span>`
+    : `
+      <label class="task-check">
+        <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} />
+        <span class="task-checkmark"></span>
+      </label>
+    `;
+
+  return `
+    <div class="today-task-block${parentDone ? ' completed' : ''}" data-id="${task.id}">
+      <div class="today-task-item parent-node${hasSubs ? ' has-children' : ''}${!hasSubs && task.completed ? ' completed' : ''}">
+        ${parentCheck}
+        <div class="task-body">
+          <div class="today-task-title-row">
+            <span class="task-title">${escapeHtml(task.title)}</span>
+            ${hasSubs ? `<span class="today-task-progress">${progress.completed}/${progress.total}</span>` : ''}
+          </div>
+          ${tags}
+        </div>
+        <div class="today-task-item-actions">
+          <button type="button" class="icon-btn add-subtask-btn" data-id="${task.id}" aria-label="添加子任务" title="分解子任务">+</button>
+          <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
+        </div>
+      </div>
+      ${
+        hasSubs
+          ? `<div class="today-subtask-list">${task.subtasks.map((sub) => renderTodaySubtaskItem(task.id, sub)).join('')}</div>`
+          : ''
+      }
+      ${
+        showForm
+          ? `
+        <form class="today-subtask-form" data-parent-id="${task.id}">
+          <input type="text" name="title" maxlength="80" placeholder="输入子任务…" required />
+          <button type="submit" class="btn btn-primary btn-sm">添加</button>
+          <button type="button" class="btn btn-ghost btn-sm cancel-subtask-btn" data-id="${task.id}">取消</button>
+        </form>
+      `
+          : ''
+      }
+    </div>
+  `;
+}
+
+function renderTodayTaskItem(task, options = {}) {
+  return renderTodayTaskBlock(task);
+}
+
 function renderTodayGoalGroup(group) {
-  const pendingCount = group.tasks.filter((t) => !t.completed).length;
+  const { total, completed } = countTasksProgress(group.tasks);
+  const pendingUnits = total - completed;
   const head =
     group.type === 'goal'
       ? `
         <div class="today-goal-group-head" style="--goal-color:${group.goal?.color || '#3b82f6'}">
           <span class="today-goal-group-dot" aria-hidden="true"></span>
           <span class="today-goal-group-title">${escapeHtml(group.goal?.title || '学习目标')}</span>
-          <span class="today-goal-group-meta">${pendingCount}/${group.tasks.length}</span>
+          <span class="today-goal-group-meta">${pendingUnits}/${total}</span>
         </div>
       `
       : `
         <div class="today-goal-group-head custom">
           <span class="today-goal-group-title">自定义任务</span>
-          <span class="today-goal-group-meta">${pendingCount}/${group.tasks.length}</span>
+          <span class="today-goal-group-meta">${pendingUnits}/${total}</span>
         </div>
       `;
 
@@ -1633,7 +1801,7 @@ function renderTodayGoalGroup(group) {
     <div class="today-goal-group${group.type === 'custom' ? ' custom-group' : ''}"${group.type === 'goal' ? ` style="--goal-color:${group.goal?.color || '#3b82f6'}"` : ''}>
       ${head}
       <div class="today-goal-group-items">
-        ${group.tasks.map((task) => renderTodayTaskItem(task, { nested: true })).join('')}
+        ${group.tasks.map((task) => renderTodayTaskBlock(task)).join('')}
       </div>
     </div>
   `;
@@ -1641,10 +1809,12 @@ function renderTodayGoalGroup(group) {
 
 function renderTodayTaskSection(tasks, label) {
   if (tasks.length === 0) return '';
+  let totalUnits = 0;
+  for (const task of tasks) totalUnits += getDailyTaskProgress(task).total;
   const groups = groupTodayTasksForDisplay(tasks);
   return `
     <div class="task-group">
-      <div class="task-group-label">${label} (${tasks.length})</div>
+      <div class="task-group-label">${label} (${totalUnits})</div>
       ${groups.map((group) => renderTodayGoalGroup(group)).join('')}
     </div>
   `;
@@ -1712,8 +1882,8 @@ function renderToday() {
   const isToday = isTodaySelected();
   const tasks = getDailyTasks(selected);
   const { completed, total } = getDailyTaskStatsForDate(selected);
-  const pending = tasks.filter((t) => !t.completed);
-  const done = tasks.filter((t) => t.completed);
+  const pending = tasks.filter((t) => !isDailyTaskDone(t));
+  const done = tasks.filter((t) => isDailyTaskDone(t));
 
   const viewTitle = $('#today-view-title');
   const dateLabel = $('#today-date-label');
@@ -1756,7 +1926,7 @@ function renderToday() {
       empty.hidden = false;
       empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
       empty.querySelector('p').textContent = isToday
-        ? '手动添加自定义任务，或点击「添加今日目标」导入学习节点'
+        ? '添加任务后点 + 可分解子任务，或点击「添加今日目标」导入学习节点'
         : '可以补充任务，或打开「任务日历」查看其他日期';
     }
     return;
@@ -2207,15 +2377,50 @@ function bindEvents() {
   });
 
   $('#today-task-list').addEventListener('change', (e) => {
-    if (!e.target.classList.contains('today-task-toggle')) return;
-    toggleDailyTask(e.target.dataset.id, e.target.checked);
+    if (e.target.classList.contains('today-task-toggle')) {
+      toggleDailyTask(e.target.dataset.id, e.target.checked);
+      return;
+    }
+    if (e.target.classList.contains('today-subtask-toggle')) {
+      toggleDailySubTask(e.target.dataset.parentId, e.target.dataset.subId, e.target.checked);
+    }
   });
 
   $('#today-task-list').addEventListener('click', (e) => {
+    const addBtn = e.target.closest('.add-subtask-btn');
+    if (addBtn) {
+      const id = addBtn.dataset.id;
+      state.expandedSubtaskParentId = state.expandedSubtaskParentId === id ? null : id;
+      renderToday();
+      return;
+    }
+
+    const cancelBtn = e.target.closest('.cancel-subtask-btn');
+    if (cancelBtn) {
+      state.expandedSubtaskParentId = null;
+      renderToday();
+      return;
+    }
+
+    const deleteSubBtn = e.target.closest('.delete-subtask-btn');
+    if (deleteSubBtn) {
+      if (!confirm('确定删除这条子任务吗？')) return;
+      deleteDailySubTask(deleteSubBtn.dataset.parentId, deleteSubBtn.dataset.subId);
+      return;
+    }
+
     const btn = e.target.closest('.delete-today-task-btn');
     if (!btn) return;
-    if (!confirm('确定从今日任务中删除这条吗？')) return;
+    if (!confirm('确定删除这条任务吗？子任务也会一并删除。')) return;
     deleteDailyTask(btn.dataset.id);
+  });
+
+  $('#today-task-list').addEventListener('submit', (e) => {
+    const form = e.target.closest('.today-subtask-form');
+    if (!form) return;
+    e.preventDefault();
+    const input = form.querySelector('input[name="title"]');
+    addDailySubTask(form.dataset.parentId, input?.value || '');
   });
 
   $('#open-import-modal-btn').addEventListener('click', openImportModal);
