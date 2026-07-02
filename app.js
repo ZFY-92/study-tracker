@@ -1,4 +1,4 @@
-const APP_VERSION = '33';
+const APP_VERSION = '34';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -1218,13 +1218,18 @@ function toggleTodayTaskCollapsed(taskId) {
   else collapsedTodayTaskIds.add(taskId);
 }
 
-function isTodayGoalGroupCollapsed(goalId) {
-  return collapsedTodayGoalIds.has(goalId);
+function getTodayGoalGroupCollapseKey(section, goalId) {
+  return `${section}:${goalId}`;
 }
 
-function toggleTodayGoalGroupCollapsed(goalId) {
-  if (collapsedTodayGoalIds.has(goalId)) collapsedTodayGoalIds.delete(goalId);
-  else collapsedTodayGoalIds.add(goalId);
+function isTodayGoalGroupCollapsed(section, goalId) {
+  return collapsedTodayGoalIds.has(getTodayGoalGroupCollapseKey(section, goalId));
+}
+
+function toggleTodayGoalGroupCollapsed(section, goalId) {
+  const key = getTodayGoalGroupCollapseKey(section, goalId);
+  if (collapsedTodayGoalIds.has(key)) collapsedTodayGoalIds.delete(key);
+  else collapsedTodayGoalIds.add(key);
 }
 
 function isTodayDoneSectionCollapsed() {
@@ -1931,7 +1936,7 @@ function renderTodayTaskItem(task, options = {}) {
   return renderTodayTaskBlock(task);
 }
 
-function renderTodayGoalGroup(group) {
+function renderTodayGoalGroup(group, sectionKey = 'pending') {
   const { total, completed } = countTasksProgress(group.tasks);
   const pendingUnits = total - completed;
 
@@ -1951,9 +1956,9 @@ function renderTodayGoalGroup(group) {
 
   const goalId = group.goalId || '';
   const goalTitle = group.goal?.title || '学习目标';
-  const collapsed = isTodayGoalGroupCollapsed(goalId);
+  const collapsed = isTodayGoalGroupCollapsed(sectionKey, goalId);
   const head = `
-    <button type="button" class="today-goal-group-head today-goal-group-toggle" data-goal-id="${goalId}" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
+    <button type="button" class="today-goal-group-head today-goal-group-toggle" data-section="${sectionKey}" data-goal-id="${goalId}" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
       <span class="goal-group-chevron collapse-chevron" aria-hidden="true"></span>
       <span class="today-goal-group-dot" aria-hidden="true"></span>
       <span class="today-goal-group-title">${escapeHtml(goalTitle)}</span>
@@ -1978,13 +1983,13 @@ function renderTodayGoalGroup(group) {
 }
 
 function renderTodayTaskSection(tasks, label, options = {}) {
-  const { collapsible = false } = options;
+  const { collapsible = false, sectionKey = collapsible ? 'done' : 'pending' } = options;
   if (tasks.length === 0) return '';
 
   let totalUnits = 0;
   for (const task of tasks) totalUnits += getDailyTaskProgress(task).total;
   const groups = groupTodayTasksForDisplay(tasks);
-  const bodyContent = groups.map((group) => renderTodayGoalGroup(group)).join('');
+  const bodyContent = groups.map((group) => renderTodayGoalGroup(group, sectionKey)).join('');
   const collapsed = collapsible && isTodayDoneSectionCollapsed();
 
   if (collapsible) {
@@ -2589,8 +2594,8 @@ function bindEvents() {
     }
 
     const goalGroupToggle = e.target.closest('.today-goal-group-toggle');
-    if (goalGroupToggle?.dataset.goalId) {
-      toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.goalId);
+    if (goalGroupToggle?.dataset.goalId && goalGroupToggle.dataset.section) {
+      toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.section, goalGroupToggle.dataset.goalId);
       renderToday();
       return;
     }
