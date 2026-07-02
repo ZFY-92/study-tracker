@@ -1,4 +1,4 @@
-const APP_VERSION = '23';
+const APP_VERSION = '24';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -11,7 +11,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'calendar' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month' }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration' }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -26,6 +26,7 @@ let state = {
   carryOverDailyTasks: true,
   lastRolloverDate: '',
   sleepChartRange: 'week',
+  sleepChartType: 'wake',
 };
 
 let editingGoalId = null;
@@ -669,6 +670,35 @@ function buildSleepDurationChart({ dates, kind = 'duration' }) {
   `;
 }
 
+function renderActiveSleepChart(dates) {
+  switch (state.sleepChartType) {
+    case 'bed':
+      return buildSleepTimeChart({
+        title: '睡觉时间',
+        color: '#6366f1',
+        dates,
+        field: 'bed',
+        forBed: true,
+        kind: 'bed',
+        referenceTime: '00:00',
+        referenceLabel: '12:00',
+      });
+    case 'duration':
+      return buildSleepDurationChart({ dates });
+    default:
+      return buildSleepTimeChart({
+        title: '起床时间',
+        color: '#f59e0b',
+        dates,
+        field: 'wake',
+        forBed: false,
+        kind: 'wake',
+        referenceTime: '08:30',
+        referenceLabel: '8:30',
+      });
+  }
+}
+
 function renderSleepHistoryCell(date, type, value) {
   const label = type === 'wake' ? '起床' : '睡觉';
   if (value) {
@@ -785,14 +815,14 @@ function renderSleep() {
     btn.classList.toggle('active', btn.dataset.range === state.sleepChartRange);
   });
 
+  $$('.sleep-type-btn').forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.chartType === state.sleepChartType);
+  });
+
   const dates = getSleepChartDates();
   const chartsEl = $('#sleep-charts');
   if (chartsEl) {
-    chartsEl.innerHTML = `
-      ${buildSleepTimeChart({ title: '起床时间', color: '#f59e0b', dates, field: 'wake', forBed: false, kind: 'wake', referenceTime: '08:30', referenceLabel: '8:30' })}
-      ${buildSleepTimeChart({ title: '睡觉时间', color: '#6366f1', dates, field: 'bed', forBed: true, kind: 'bed', referenceTime: '00:00', referenceLabel: '12:00' })}
-      ${buildSleepDurationChart({ dates })}
-    `;
+    chartsEl.innerHTML = renderActiveSleepChart(dates);
   }
 
   const historyEl = $('#sleep-history-wrap');
@@ -2012,6 +2042,16 @@ function bindEvents() {
   });
 
   $('#view-sleep')?.addEventListener('click', (e) => {
+    const typeBtn = e.target.closest('.sleep-type-btn');
+    if (typeBtn) {
+      const chartType = typeBtn.dataset.chartType;
+      if (chartType !== 'wake' && chartType !== 'bed' && chartType !== 'duration') return;
+      if (chartType === state.sleepChartType) return;
+      state.sleepChartType = chartType;
+      renderSleep();
+      return;
+    }
+
     const rangeBtn = e.target.closest('.sleep-range-btn');
     if (rangeBtn) {
       if (rangeBtn.dataset.range === state.sleepChartRange) return;

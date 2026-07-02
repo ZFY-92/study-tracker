@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=23" />
+    <link rel="stylesheet" href="styles.css?v=24" />
     <title>学习进度</title>
   </head>
   <body>
@@ -145,9 +145,16 @@
           <div class="sleep-chart-section">
             <div class="sleep-chart-head">
               <h3 class="sleep-section-title">趋势曲线</h3>
-              <div class="sleep-range-toggle" role="group" aria-label="图表范围">
-                <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
-                <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
+              <div class="sleep-chart-controls">
+                <div class="sleep-type-toggle" role="group" aria-label="曲线类型">
+                  <button type="button" class="sleep-type-btn active" data-chart-type="wake">起床</button>
+                  <button type="button" class="sleep-type-btn" data-chart-type="bed">睡觉</button>
+                  <button type="button" class="sleep-type-btn" data-chart-type="duration">睡眠时长</button>
+                </div>
+                <div class="sleep-range-toggle" role="group" aria-label="图表范围">
+                  <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
+                  <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
+                </div>
               </div>
             </div>
             <div class="sleep-charts" id="sleep-charts"></div>
@@ -313,6 +320,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=23" type="module"></script>
+    <script src="app.js?v=24" type="module"></script>
   </body>
 </html>
