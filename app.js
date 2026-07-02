@@ -1,4 +1,4 @@
-const APP_VERSION = '32';
+const APP_VERSION = '33';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -43,6 +43,7 @@ let editingTasks = [];
 let collapsedTodayTaskIds = new Set();
 /** @type {Set<string>} */
 let collapsedTodayGoalIds = new Set();
+let todayDoneSectionCollapsed = true;
 let draggedGoalId = null;
 let swRegistration = null;
 let deferredInstallPrompt = null;
@@ -1226,6 +1227,14 @@ function toggleTodayGoalGroupCollapsed(goalId) {
   else collapsedTodayGoalIds.add(goalId);
 }
 
+function isTodayDoneSectionCollapsed() {
+  return todayDoneSectionCollapsed;
+}
+
+function toggleTodayDoneSectionCollapsed() {
+  todayDoneSectionCollapsed = !todayDoneSectionCollapsed;
+}
+
 function focusInlineEditInput(container) {
   if (!container) return;
   requestAnimationFrame(() => {
@@ -1968,15 +1977,36 @@ function renderTodayGoalGroup(group) {
   `;
 }
 
-function renderTodayTaskSection(tasks, label) {
+function renderTodayTaskSection(tasks, label, options = {}) {
+  const { collapsible = false } = options;
   if (tasks.length === 0) return '';
+
   let totalUnits = 0;
   for (const task of tasks) totalUnits += getDailyTaskProgress(task).total;
   const groups = groupTodayTasksForDisplay(tasks);
+  const bodyContent = groups.map((group) => renderTodayGoalGroup(group)).join('');
+  const collapsed = collapsible && isTodayDoneSectionCollapsed();
+
+  if (collapsible) {
+    return `
+      <div class="today-section-panel today-section-done${collapsed ? ' collapsed' : ''}">
+        <button type="button" class="today-section-head today-section-toggle" data-section="done" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}">
+          <span class="section-chevron collapse-chevron" aria-hidden="true"></span>
+          <span class="today-section-title">${label}</span>
+          <span class="today-section-meta">${totalUnits} 项</span>
+        </button>
+        ${!collapsed ? `<div class="today-section-body">${bodyContent}</div>` : ''}
+      </div>
+    `;
+  }
+
   return `
-    <div class="task-group">
-      <div class="task-group-label">${label} (${totalUnits})</div>
-      ${groups.map((group) => renderTodayGoalGroup(group)).join('')}
+    <div class="today-section-panel today-section-pending">
+      <div class="today-section-head">
+        <span class="today-section-title">${label}</span>
+        <span class="today-section-meta">${totalUnits} 项</span>
+      </div>
+      <div class="today-section-body">${bodyContent}</div>
     </div>
   `;
 }
@@ -2096,7 +2126,8 @@ function renderToday() {
   if (empty) empty.hidden = true;
   if (list) {
     list.innerHTML =
-      renderTodayTaskSection(pending, '待完成') + renderTodayTaskSection(done, '已完成');
+      renderTodayTaskSection(pending, '待完成') +
+      renderTodayTaskSection(done, '已完成', { collapsible: true });
     focusInlineEditInput(list);
   }
 }
@@ -2550,6 +2581,13 @@ function bindEvents() {
   });
 
   $('#today-task-list').addEventListener('click', (e) => {
+    const sectionToggle = e.target.closest('.today-section-toggle');
+    if (sectionToggle?.dataset.section === 'done') {
+      toggleTodayDoneSectionCollapsed();
+      renderToday();
+      return;
+    }
+
     const goalGroupToggle = e.target.closest('.today-goal-group-toggle');
     if (goalGroupToggle?.dataset.goalId) {
       toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.goalId);

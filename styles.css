@@ -1831,11 +1831,93 @@ body {
 }
 
 .today-task-list {
-  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.today-section-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.65rem 0.75rem 0.85rem;
+  background: var(--bg-card);
   box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.today-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.62rem 0.75rem;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+}
+
+.today-section-pending .today-section-head {
+  background: color-mix(in srgb, var(--primary) 7%, #fff);
+  border-bottom: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+}
+
+.today-section-done .today-section-head {
+  background: var(--bg-hover);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.today-section-done .today-section-head:hover {
+  background: color-mix(in srgb, var(--text-muted) 8%, var(--bg-hover));
+}
+
+.today-section-done .today-section-head:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  outline-offset: -2px;
+}
+
+.today-section-panel.collapsed .today-section-head {
+  border-bottom: none;
+}
+
+.today-section-panel.collapsed .section-chevron {
+  transform: rotate(-45deg);
+  margin-top: 0.08rem;
+}
+
+.today-section-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.today-section-pending .today-section-title {
+  color: var(--primary);
+}
+
+.today-section-meta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--text-muted) 10%, #fff);
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+}
+
+.today-section-body {
+  padding: 0.45rem 0.65rem 0.7rem;
+}
+
+.today-section-body .today-goal-group:first-child {
+  margin-top: 0.15rem;
 }
 
 .today-goal-group {
