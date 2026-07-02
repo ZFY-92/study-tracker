@@ -1926,6 +1926,52 @@ body {
   font-weight: 700;
 }
 
+.today-task-header-toggle {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.today-task-header-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.today-task-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.today-task-collapse-btn:hover {
+  background: var(--bg-hover);
+  color: var(--primary);
+}
+
+.collapse-chevron {
+  display: block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  margin-top: -0.12rem;
+}
+
+.today-task-block.collapsed .collapse-chevron {
+  transform: rotate(-45deg);
+  margin-top: 0.08rem;
+}
+
 .today-task-title-row {
   display: flex;
   align-items: baseline;

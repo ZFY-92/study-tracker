@@ -1,4 +1,4 @@
-const APP_VERSION = '30';
+const APP_VERSION = '31';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -39,6 +39,8 @@ let state = {
 let editingGoalId = null;
 /** @type {TaskNode[]} */
 let editingTasks = [];
+/** @type {Set<string>} */
+let collapsedTodayTaskIds = new Set();
 let draggedGoalId = null;
 let swRegistration = null;
 let deferredInstallPrompt = null;
@@ -1100,6 +1102,7 @@ function addDailySubTask(parentId, title) {
   });
   syncParentFromSubtasks(parent);
   state.expandedSubtaskParentId = null;
+  collapsedTodayTaskIds.delete(parentId);
   saveData();
   renderToday();
   showToast('已添加子任务');
@@ -1146,6 +1149,7 @@ function deleteDailyTask(taskId) {
   if (tasks.length === 0) delete state.dailyTasks[getSelectedDailyDate()];
   if (state.editingDailyTaskId === taskId) state.editingDailyTaskId = null;
   if (state.expandedSubtaskParentId === taskId) state.expandedSubtaskParentId = null;
+  collapsedTodayTaskIds.delete(taskId);
   saveData();
   renderToday();
   showToast('任务已删除');
@@ -1200,6 +1204,15 @@ function clearTodayEditingState() {
   state.editingDailyTaskId = null;
   state.editingDailySubTask = null;
   state.expandedSubtaskParentId = null;
+}
+
+function isTodayTaskCollapsed(taskId) {
+  return collapsedTodayTaskIds.has(taskId);
+}
+
+function toggleTodayTaskCollapsed(taskId) {
+  if (collapsedTodayTaskIds.has(taskId)) collapsedTodayTaskIds.delete(taskId);
+  else collapsedTodayTaskIds.add(taskId);
 }
 
 function focusInlineEditInput(container) {
@@ -1830,13 +1843,16 @@ function renderTodayTaskBlock(task) {
   const parentDone = isDailyTaskDone(task);
   const showForm = state.expandedSubtaskParentId === task.id;
   const isEditing = state.editingDailyTaskId === task.id;
+  const collapsed = hasSubs && isTodayTaskCollapsed(task.id) && !isEditing && !showForm;
   const carriedLabel = task.carriedFrom
     ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
     : '';
   const tags = carriedLabel ? `<span class="today-task-tags">${carriedLabel}</span>` : '';
 
   const parentCheck = hasSubs
-    ? `<span class="task-check task-check-placeholder" aria-hidden="true"></span>`
+    ? `<button type="button" class="today-task-collapse-btn" data-id="${task.id}" aria-expanded="${!collapsed}" aria-label="${collapsed ? '展开子任务' : '收起子任务'}" title="${collapsed ? '展开' : '收起'}">
+        <span class="collapse-chevron" aria-hidden="true"></span>
+      </button>`
     : `
       <label class="task-check">
         <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} ${isEditing ? 'disabled' : ''} />
@@ -1854,10 +1870,10 @@ function renderTodayTaskBlock(task) {
     `;
 
   return `
-    <div class="today-task-block${parentDone ? ' completed' : ''}${isEditing ? ' is-editing' : ''}" data-id="${task.id}">
+    <div class="today-task-block${parentDone ? ' completed' : ''}${isEditing ? ' is-editing' : ''}${collapsed ? ' collapsed' : ''}${hasSubs ? ' has-children' : ''}" data-id="${task.id}">
       <div class="today-task-item parent-node${hasSubs ? ' has-children' : ''}${!hasSubs && task.completed ? ' completed' : ''}">
         ${parentCheck}
-        <div class="task-body">
+        <div class="task-body${hasSubs && !isEditing ? ' today-task-header-toggle' : ''}"${hasSubs && !isEditing ? ` data-id="${task.id}" role="button" tabindex="0" aria-expanded="${!collapsed}"` : ''}>
           ${titleBlock}
           ${!isEditing ? tags : ''}
         </div>
@@ -1872,12 +1888,12 @@ function renderTodayTaskBlock(task) {
         </div>
       </div>
       ${
-        hasSubs
+        hasSubs && !collapsed
           ? `<div class="today-subtask-list">${task.subtasks.map((sub) => renderTodaySubtaskItem(task.id, sub)).join('')}</div>`
           : ''
       }
       ${
-        showForm
+        showForm && !collapsed
           ? `
         <form class="today-subtask-form" data-parent-id="${task.id}">
           <input type="text" name="title" maxlength="80" placeholder="输入子任务…" required />
@@ -2538,7 +2554,22 @@ function bindEvents() {
       const id = addBtn.dataset.id;
       state.editingDailyTaskId = null;
       state.editingDailySubTask = null;
+      collapsedTodayTaskIds.delete(id);
       state.expandedSubtaskParentId = state.expandedSubtaskParentId === id ? null : id;
+      renderToday();
+      return;
+    }
+
+    const collapseBtn = e.target.closest('.today-task-collapse-btn');
+    if (collapseBtn) {
+      toggleTodayTaskCollapsed(collapseBtn.dataset.id);
+      renderToday();
+      return;
+    }
+
+    const headerToggle = e.target.closest('.today-task-header-toggle');
+    if (headerToggle) {
+      toggleTodayTaskCollapsed(headerToggle.dataset.id);
       renderToday();
       return;
     }
@@ -2561,6 +2592,15 @@ function bindEvents() {
     if (!btn) return;
     if (!confirm('确定删除这条任务吗？子任务也会一并删除。')) return;
     deleteDailyTask(btn.dataset.id);
+  });
+
+  $('#today-task-list').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const headerToggle = e.target.closest('.today-task-header-toggle');
+    if (!headerToggle) return;
+    e.preventDefault();
+    toggleTodayTaskCollapsed(headerToggle.dataset.id);
+    renderToday();
   });
 
   $('#today-task-list').addEventListener('submit', (e) => {
