@@ -1,4 +1,4 @@
-const APP_VERSION = '27';
+const APP_VERSION = '28';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -1544,7 +1544,44 @@ function renderGoalDetail() {
   `;
 }
 
-function renderTodayTaskItem(task) {
+function groupTodayTasksForDisplay(tasks) {
+  /** @type {Map<string, DailyTask[]>} */
+  const goalMap = new Map();
+  /** @type {DailyTask[]} */
+  const customTasks = [];
+
+  for (const task of tasks) {
+    if (task.source === 'goal' && task.goalId) {
+      if (!goalMap.has(task.goalId)) goalMap.set(task.goalId, []);
+      goalMap.get(task.goalId).push(task);
+    } else {
+      customTasks.push(task);
+    }
+  }
+
+  /** @type {Array<{ type: 'goal' | 'custom', goalId?: string, goal?: Goal, tasks: DailyTask[] }>} */
+  const groups = [];
+
+  for (const [goalId, goalTasks] of goalMap) {
+    groups.push({
+      type: 'goal',
+      goalId,
+      goal: state.goals.find((g) => g.id === goalId),
+      tasks: goalTasks,
+    });
+  }
+
+  groups.sort((a, b) => (a.goal?.title || '').localeCompare(b.goal?.title || '', 'zh-CN'));
+
+  if (customTasks.length) {
+    groups.push({ type: 'custom', tasks: customTasks });
+  }
+
+  return groups;
+}
+
+function renderTodayTaskItem(task, options = {}) {
+  const { nested = false } = options;
   const goal = task.source === 'goal' && task.goalId ? state.goals.find((g) => g.id === task.goalId) : null;
   const sourceLabel =
     task.source === 'goal'
@@ -1553,18 +1590,62 @@ function renderTodayTaskItem(task) {
   const carriedLabel = task.carriedFrom
     ? `<span class="today-task-source carried">自 ${task.carriedFrom.slice(5).replace('-', '/')} 结转</span>`
     : '';
+  const tags = nested
+    ? carriedLabel
+      ? `<span class="today-task-tags">${carriedLabel}</span>`
+      : ''
+    : `<span class="today-task-tags">${sourceLabel}${carriedLabel}</span>`;
 
   return `
-    <div class="today-task-item${task.completed ? ' completed' : ''}" data-id="${task.id}">
+    <div class="today-task-item${task.completed ? ' completed' : ''}${nested ? ' sub-node' : ''}" data-id="${task.id}">
       <label class="task-check">
         <input type="checkbox" class="today-task-toggle" data-id="${task.id}" ${task.completed ? 'checked' : ''} />
         <span class="task-checkmark"></span>
       </label>
       <div class="task-body">
         <span class="task-title">${escapeHtml(task.title)}</span>
-        <span class="today-task-tags">${sourceLabel}${carriedLabel}</span>
+        ${tags}
       </div>
       <button type="button" class="icon-btn delete-today-task-btn" data-id="${task.id}" aria-label="删除">✕</button>
+    </div>
+  `;
+}
+
+function renderTodayGoalGroup(group) {
+  const pendingCount = group.tasks.filter((t) => !t.completed).length;
+  const head =
+    group.type === 'goal'
+      ? `
+        <div class="today-goal-group-head" style="--goal-color:${group.goal?.color || '#3b82f6'}">
+          <span class="today-goal-group-dot" aria-hidden="true"></span>
+          <span class="today-goal-group-title">${escapeHtml(group.goal?.title || '学习目标')}</span>
+          <span class="today-goal-group-meta">${pendingCount}/${group.tasks.length}</span>
+        </div>
+      `
+      : `
+        <div class="today-goal-group-head custom">
+          <span class="today-goal-group-title">自定义任务</span>
+          <span class="today-goal-group-meta">${pendingCount}/${group.tasks.length}</span>
+        </div>
+      `;
+
+  return `
+    <div class="today-goal-group${group.type === 'custom' ? ' custom-group' : ''}"${group.type === 'goal' ? ` style="--goal-color:${group.goal?.color || '#3b82f6'}"` : ''}>
+      ${head}
+      <div class="today-goal-group-items">
+        ${group.tasks.map((task) => renderTodayTaskItem(task, { nested: true })).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderTodayTaskSection(tasks, label) {
+  if (tasks.length === 0) return '';
+  const groups = groupTodayTasksForDisplay(tasks);
+  return `
+    <div class="task-group">
+      <div class="task-group-label">${label} (${tasks.length})</div>
+      ${groups.map((group) => renderTodayGoalGroup(group)).join('')}
     </div>
   `;
 }
@@ -1662,7 +1743,9 @@ function renderToday() {
   const calendarToggle = $('#toggle-today-calendar-btn');
   if (calendarToggle) {
     calendarToggle.classList.toggle('active', state.todayCalendarOpen);
-    calendarToggle.textContent = state.todayCalendarOpen ? '收起日历' : '📅 任务日历';
+    calendarToggle.setAttribute('aria-expanded', String(state.todayCalendarOpen));
+    const label = calendarToggle.querySelector('.today-action-tile-label');
+    if (label) label.textContent = state.todayCalendarOpen ? '收起日历' : '任务日历';
   }
   if (calendarCard) calendarCard.hidden = !state.todayCalendarOpen;
   if (state.todayCalendarOpen) renderDailyCalendar();
@@ -1673,7 +1756,7 @@ function renderToday() {
       empty.hidden = false;
       empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
       empty.querySelector('p').textContent = isToday
-        ? '手动添加，或从学习目标里导入任务节点'
+        ? '手动添加自定义任务，或点击「添加今日目标」导入学习节点'
         : '可以补充任务，或打开「任务日历」查看其他日期';
     }
     return;
@@ -1681,24 +1764,8 @@ function renderToday() {
 
   if (empty) empty.hidden = true;
   if (list) {
-    list.innerHTML = `
-      ${
-        pending.length
-          ? `<div class="task-group">
-              <div class="task-group-label">待完成 (${pending.length})</div>
-              ${pending.map((task) => renderTodayTaskItem(task)).join('')}
-            </div>`
-          : ''
-      }
-      ${
-        done.length
-          ? `<div class="task-group">
-              <div class="task-group-label">已完成 (${done.length})</div>
-              ${done.map((task) => renderTodayTaskItem(task)).join('')}
-            </div>`
-          : ''
-      }
-    `;
+    list.innerHTML =
+      renderTodayTaskSection(pending, '待完成') + renderTodayTaskSection(done, '已完成');
   }
 }
 

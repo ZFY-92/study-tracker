@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=27" />
+    <link rel="stylesheet" href="styles.css?v=28" />
     <title>学习进度</title>
   </head>
   <body>
@@ -82,12 +82,20 @@
             </div>
           </div>
           <div class="today-actions" id="today-actions">
+            <div class="today-action-tiles">
+              <button type="button" class="today-action-tile" id="toggle-today-calendar-btn" aria-expanded="false">
+                <span class="today-action-tile-icon" aria-hidden="true">📅</span>
+                <span class="today-action-tile-label">任务日历</span>
+              </button>
+              <button type="button" class="today-action-tile today-action-tile-primary" id="open-import-modal-btn">
+                <span class="today-action-tile-icon" aria-hidden="true">🎯</span>
+                <span class="today-action-tile-label">添加今日目标</span>
+              </button>
+            </div>
             <form class="today-add-form" id="today-add-form">
-              <input type="text" name="title" maxlength="80" placeholder="写一条今天要做的任务…" required />
-              <button type="submit" class="btn btn-primary btn-sm">添加</button>
+              <input type="text" name="title" maxlength="80" placeholder="写一条自定义任务…" required />
+              <button type="submit" class="btn btn-primary btn-sm today-add-submit">添加</button>
             </form>
-            <button type="button" class="btn btn-ghost btn-sm" id="open-import-modal-btn">从目标导入</button>
-            <button type="button" class="btn btn-ghost btn-sm" id="toggle-today-calendar-btn">📅 任务日历</button>
           </div>
           <article class="today-calendar-card" id="today-calendar-card" hidden>
             <p class="calendar-page-hint">点击日期查看该天的任务</p>
@@ -102,7 +110,7 @@
           <div class="empty-state" id="today-empty-state" hidden>
             <div class="empty-icon">📝</div>
             <h3>今天还没有任务</h3>
-            <p>手动添加，或从学习目标里导入任务节点</p>
+            <p>手动添加自定义任务，或点击「添加今日目标」导入学习节点</p>
           </div>
         </section>
 
@@ -325,6 +333,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=27" type="module"></script>
+    <script src="app.js?v=28" type="module"></script>
   </body>
 </html>

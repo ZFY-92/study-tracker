@@ -1496,9 +1496,9 @@ body {
 }
 
 #toggle-today-calendar-btn.active {
+  border-color: var(--primary);
   background: color-mix(in srgb, var(--primary) 12%, #fff);
   color: var(--primary);
-  border-color: color-mix(in srgb, var(--primary) 25%, var(--border));
 }
 
 .calendar-legend {
@@ -1693,7 +1693,63 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.today-action-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.today-action-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 4.25rem;
+  padding: 0.55rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.today-action-tile:hover {
+  background: var(--bg-hover);
+}
+
+.today-action-tile-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.today-action-tile-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.today-action-tile-primary {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, #fff);
+  color: var(--primary);
+}
+
+.today-action-tile-primary:hover {
+  background: color-mix(in srgb, var(--primary) 10%, #fff);
+}
+
+.today-action-tile.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, #fff);
+  color: var(--primary);
 }
 
 .today-add-form {
@@ -1701,14 +1757,20 @@ body {
   gap: 0.5rem;
 }
 
+.today-add-submit {
+  flex-shrink: 0;
+  min-width: 3.5rem;
+  border-radius: var(--radius-sm);
+}
+
 .today-add-form input {
   flex: 1;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 0.6rem 0.75rem;
+  padding: 0.55rem 0.7rem;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-family: inherit;
   box-shadow: var(--shadow);
 }
@@ -1722,8 +1784,80 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.75rem 1rem 1rem;
+  padding: 0.65rem 0.75rem 0.85rem;
   box-shadow: var(--shadow);
+}
+
+.today-goal-group {
+  margin-top: 0.55rem;
+}
+
+.today-goal-group:first-child {
+  margin-top: 0.35rem;
+}
+
+.today-goal-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.15rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--goal-color, var(--primary)) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--goal-color, var(--primary)) 22%, var(--border));
+}
+
+.today-goal-group-head.custom {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+.today-goal-group-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--goal-color, var(--primary));
+  flex-shrink: 0;
+}
+
+.today-goal-group-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today-goal-group-meta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.today-goal-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-left: 0.15rem;
+}
+
+.today-task-item.sub-node {
+  padding: 0.5rem 0.35rem 0.5rem 0.55rem;
+  margin-left: 0.35rem;
+  border-left: 2px solid color-mix(in srgb, var(--goal-color, var(--border)) 35%, var(--border));
+}
+
+.today-goal-group.custom-group .today-task-item.sub-node {
+  border-left-color: var(--border);
+}
+
+.today-task-item.sub-node .task-title {
+  font-size: 0.9rem;
 }
 
 .today-task-item {
