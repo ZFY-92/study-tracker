@@ -1,4 +1,4 @@
-const APP_VERSION = '24';
+const APP_VERSION = '25';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -11,7 +11,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'calendar' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration' }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepHistoryExpanded: boolean }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -27,6 +27,7 @@ let state = {
   lastRolloverDate: '',
   sleepChartRange: 'week',
   sleepChartType: 'wake',
+  sleepHistoryExpanded: false,
 };
 
 let editingGoalId = null;
@@ -825,9 +826,22 @@ function renderSleep() {
     chartsEl.innerHTML = renderActiveSleepChart(dates);
   }
 
+  const historyToggle = $('#sleep-history-toggle');
+  const historyPanel = $('#sleep-history-panel');
+  const historyCountEl = $('#sleep-history-count');
+  const recent = getRecentSleepDates();
+
+  if (historyToggle) {
+    historyToggle.setAttribute('aria-expanded', String(state.sleepHistoryExpanded));
+    historyToggle.classList.toggle('expanded', state.sleepHistoryExpanded);
+  }
+  if (historyPanel) historyPanel.hidden = !state.sleepHistoryExpanded;
+  if (historyCountEl) {
+    historyCountEl.textContent = recent.length > 0 ? `${recent.length} 条记录` : '暂无记录';
+  }
+
   const historyEl = $('#sleep-history-wrap');
-  if (historyEl) {
-    const recent = getRecentSleepDates();
+  if (historyEl && state.sleepHistoryExpanded) {
     if (recent.length === 0) {
       historyEl.innerHTML = '<p class="sleep-history-empty">还没有记录</p>';
     } else {
@@ -2042,6 +2056,13 @@ function bindEvents() {
   });
 
   $('#view-sleep')?.addEventListener('click', (e) => {
+    const historyToggle = e.target.closest('#sleep-history-toggle');
+    if (historyToggle) {
+      state.sleepHistoryExpanded = !state.sleepHistoryExpanded;
+      renderSleep();
+      return;
+    }
+
     const typeBtn = e.target.closest('.sleep-type-btn');
     if (typeBtn) {
       const chartType = typeBtn.dataset.chartType;

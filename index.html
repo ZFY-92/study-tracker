@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=24" />
+    <link rel="stylesheet" href="styles.css?v=25" />
     <title>学习进度</title>
   </head>
   <body>
@@ -160,8 +160,16 @@
             <div class="sleep-charts" id="sleep-charts"></div>
           </div>
           <div class="sleep-history-section">
-            <h3 class="sleep-section-title">近期记录</h3>
-            <div class="sleep-history-table-wrap" id="sleep-history-wrap"></div>
+            <button type="button" class="sleep-history-toggle" id="sleep-history-toggle" aria-expanded="false" aria-controls="sleep-history-panel">
+              <span class="sleep-history-toggle-text">
+                <span class="sleep-section-title">近期记录</span>
+                <span class="sleep-history-count" id="sleep-history-count">暂无记录</span>
+              </span>
+              <span class="sleep-history-toggle-icon" aria-hidden="true">▼</span>
+            </button>
+            <div class="sleep-history-panel" id="sleep-history-panel" hidden>
+              <div class="sleep-history-table-wrap" id="sleep-history-wrap"></div>
+            </div>
           </div>
         </section>
 
@@ -320,6 +328,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=24" type="module"></script>
+    <script src="app.js?v=25" type="module"></script>
   </body>
 </html>

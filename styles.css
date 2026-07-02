@@ -2082,8 +2082,64 @@ body {
   font-size: 0.82rem;
 }
 
-.sleep-chart-section,
 .sleep-history-section {
+  margin-bottom: 1.25rem;
+}
+
+.sleep-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.sleep-history-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.sleep-history-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sleep-history-toggle .sleep-section-title {
+  margin: 0;
+}
+
+.sleep-history-count {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+.sleep-history-toggle-icon {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.sleep-history-toggle.expanded .sleep-history-toggle-icon {
+  transform: rotate(180deg);
+}
+
+.sleep-history-panel {
+  margin-top: 0.65rem;
+}
+
+.sleep-chart-section {
   margin-bottom: 1.25rem;
 }
 
