@@ -2172,6 +2172,66 @@ body {
   stroke-dasharray: 4 4;
 }
 
+.sleep-ref-line {
+  stroke-width: 2.5;
+  pointer-events: none;
+}
+
+.sleep-ref-line.wake {
+  stroke: #ef4444;
+  opacity: 0.85;
+}
+
+.sleep-ref-line.bed {
+  stroke: #7c3aed;
+  opacity: 0.85;
+}
+
+.sleep-ref-label {
+  font-size: 10px;
+  font-family: inherit;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.sleep-ref-label.wake {
+  fill: #ef4444;
+}
+
+.sleep-ref-label.bed {
+  fill: #7c3aed;
+}
+
+.sleep-chart-point {
+  cursor: pointer;
+}
+
+.sleep-chart-point-hit {
+  fill: transparent;
+}
+
+.sleep-chart-point-dot {
+  transition: r 0.15s, fill 0.15s;
+}
+
+.sleep-chart-point:hover .sleep-chart-point-dot,
+.sleep-chart-point.active .sleep-chart-point-dot {
+  r: 6;
+}
+
+.sleep-chart-point.active .sleep-chart-point-dot {
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+
+.sleep-chart-detail {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 1.25em;
+}
+
 .sleep-axis-label {
   fill: var(--text-muted);
   font-size: 10px;

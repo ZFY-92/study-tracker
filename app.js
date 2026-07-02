@@ -1,4 +1,4 @@
-const APP_VERSION = '22';
+const APP_VERSION = '23';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -442,7 +442,47 @@ function getRecentSleepDates(limit = 14) {
   return dates.slice(0, limit);
 }
 
-function buildSleepTimeChart({ title, color, dates, field, forBed }) {
+function formatChartDateLabel(date) {
+  return date === todayStr() ? '今天' : date.slice(5).replace('-', '/');
+}
+
+function formatChartPointDetail(date, kind, value) {
+  const kinds = { wake: '起床', bed: '睡觉', duration: '睡眠时长' };
+  const valueText = kind === 'duration' ? formatDuration(Number(value)) : value;
+  return `${formatChartDateLabel(date)} · ${kinds[kind] || kind} ${valueText}`;
+}
+
+function finalizeChartRange(minM, maxM, referenceMinutes) {
+  let min = minM;
+  let max = maxM;
+  if (referenceMinutes != null) {
+    if (referenceMinutes < min) min = referenceMinutes;
+    if (referenceMinutes > max) max = referenceMinutes;
+  }
+  const span = Math.max(max - min, 60);
+  min = Math.floor((min - span * 0.15) / 30) * 30;
+  max = Math.ceil((max + span * 0.15) / 30) * 30;
+  return { minM: min, maxM: max, rangeM: Math.max(max - min, 30) };
+}
+
+function buildChartReferenceLine({ minutes, label, minM, rangeM, chartH, pad, width, className }) {
+  const y = pad.top + chartH - ((minutes - minM) / rangeM) * chartH;
+  return `
+    <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="sleep-ref-line ${className}" />
+    <text x="${width - pad.right - 2}" y="${y - 4}" class="sleep-ref-label ${className}" text-anchor="end">${escapeHtml(label)}</text>
+  `;
+}
+
+function buildSleepChartPoint({ cx, cy, color, date, value, kind }) {
+  return `
+    <g class="sleep-chart-point" data-date="${date}" data-value="${escapeHtml(value)}" data-kind="${kind}" role="button" tabindex="0" aria-label="${escapeHtml(formatChartPointDetail(date, kind, value))}">
+      <circle cx="${cx}" cy="${cy}" r="12" class="sleep-chart-point-hit" />
+      <circle cx="${cx}" cy="${cy}" r="4" fill="${color}" class="sleep-chart-point-dot" />
+    </g>
+  `;
+}
+
+function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -467,10 +507,11 @@ function buildSleepTimeChart({ title, color, dates, field, forBed }) {
   const minuteValues = plotted.map((slot) => parseTimeToMinutes(slot.value, forBed));
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
-  const span = Math.max(maxM - minM, 60);
-  minM = Math.floor((minM - span * 0.15) / 30) * 30;
-  maxM = Math.ceil((maxM + span * 0.15) / 30) * 30;
-  const rangeM = Math.max(maxM - minM, 30);
+  const refMinutes = referenceTime ? parseTimeToMinutes(referenceTime, forBed) : null;
+  const range = finalizeChartRange(minM, maxM, refMinutes);
+  minM = range.minM;
+  maxM = range.maxM;
+  const rangeM = range.rangeM;
 
   const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
   const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
@@ -485,9 +526,30 @@ function buildSleepTimeChart({ title, color, dates, field, forBed }) {
   const dots = plotted
     .map((slot) => {
       const mins = parseTimeToMinutes(slot.value, forBed);
-      return `<circle cx="${toX(slot.index)}" cy="${toY(mins)}" r="4" fill="${color}" />`;
+      return buildSleepChartPoint({
+        cx: toX(slot.index),
+        cy: toY(mins),
+        color,
+        date: slot.date,
+        value: slot.value,
+        kind,
+      });
     })
     .join('');
+
+  const refLine =
+    refMinutes != null
+      ? buildChartReferenceLine({
+          minutes: refMinutes,
+          label: referenceLabel || referenceTime,
+          minM,
+          rangeM,
+          chartH,
+          pad,
+          width,
+          className: kind === 'wake' ? 'wake' : 'bed',
+        })
+      : '';
 
   const yTicks = 4;
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
@@ -514,16 +576,18 @@ function buildSleepTimeChart({ title, color, dates, field, forBed }) {
       <div class="sleep-chart-svg-wrap">
         <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
           ${yLabels}
+          ${refLine}
           <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           ${dots}
           ${xLabels}
         </svg>
       </div>
+      <p class="sleep-chart-detail">点击数据点查看详情</p>
     </article>
   `;
 }
 
-function buildSleepDurationChart({ dates }) {
+function buildSleepDurationChart({ dates, kind = 'duration' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -558,7 +622,16 @@ function buildSleepDurationChart({ dates }) {
 
   const points = plotted.map((slot) => `${toX(slot.index)},${toY(slot.minutes)}`).join(' ');
   const dots = plotted
-    .map((slot) => `<circle cx="${toX(slot.index)}" cy="${toY(slot.minutes)}" r="4" fill="#10b981" />`)
+    .map((slot) =>
+      buildSleepChartPoint({
+        cx: toX(slot.index),
+        cy: toY(slot.minutes),
+        color: '#10b981',
+        date: slot.date,
+        value: String(slot.minutes),
+        kind,
+      })
+    )
     .join('');
 
   const yTicks = 4;
@@ -591,6 +664,7 @@ function buildSleepDurationChart({ dates }) {
           ${xLabels}
         </svg>
       </div>
+      <p class="sleep-chart-detail">点击数据点查看详情</p>
     </article>
   `;
 }
@@ -715,8 +789,8 @@ function renderSleep() {
   const chartsEl = $('#sleep-charts');
   if (chartsEl) {
     chartsEl.innerHTML = `
-      ${buildSleepTimeChart({ title: '起床时间', color: '#f59e0b', dates, field: 'wake', forBed: false })}
-      ${buildSleepTimeChart({ title: '睡觉时间', color: '#6366f1', dates, field: 'bed', forBed: true })}
+      ${buildSleepTimeChart({ title: '起床时间', color: '#f59e0b', dates, field: 'wake', forBed: false, kind: 'wake', referenceTime: '08:30', referenceLabel: '8:30' })}
+      ${buildSleepTimeChart({ title: '睡觉时间', color: '#6366f1', dates, field: 'bed', forBed: true, kind: 'bed', referenceTime: '00:00', referenceLabel: '12:00' })}
       ${buildSleepDurationChart({ dates })}
     `;
   }
@@ -1952,6 +2026,17 @@ function bindEvents() {
       const type = deleteBtn.dataset.type;
       if (type !== 'wake' && type !== 'bed' && type !== 'duration') return;
       deleteSleepTime(date, type);
+      return;
+    }
+
+    const chartPoint = e.target.closest('.sleep-chart-point');
+    if (chartPoint) {
+      $$('.sleep-chart-point.active').forEach((p) => p.classList.remove('active'));
+      chartPoint.classList.add('active');
+      const card = chartPoint.closest('.sleep-chart-card');
+      const detail = card?.querySelector('.sleep-chart-detail');
+      const text = formatChartPointDetail(chartPoint.dataset.date, chartPoint.dataset.kind, chartPoint.dataset.value);
+      if (detail) detail.textContent = text;
     }
   });
 
