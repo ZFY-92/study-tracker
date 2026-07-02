@@ -1,4 +1,4 @@
-const APP_VERSION = '31';
+const APP_VERSION = '32';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -41,6 +41,8 @@ let editingGoalId = null;
 let editingTasks = [];
 /** @type {Set<string>} */
 let collapsedTodayTaskIds = new Set();
+/** @type {Set<string>} */
+let collapsedTodayGoalIds = new Set();
 let draggedGoalId = null;
 let swRegistration = null;
 let deferredInstallPrompt = null;
@@ -1215,6 +1217,15 @@ function toggleTodayTaskCollapsed(taskId) {
   else collapsedTodayTaskIds.add(taskId);
 }
 
+function isTodayGoalGroupCollapsed(goalId) {
+  return collapsedTodayGoalIds.has(goalId);
+}
+
+function toggleTodayGoalGroupCollapsed(goalId) {
+  if (collapsedTodayGoalIds.has(goalId)) collapsedTodayGoalIds.delete(goalId);
+  else collapsedTodayGoalIds.add(goalId);
+}
+
 function focusInlineEditInput(container) {
   if (!container) return;
   requestAnimationFrame(() => {
@@ -1914,28 +1925,45 @@ function renderTodayTaskItem(task, options = {}) {
 function renderTodayGoalGroup(group) {
   const { total, completed } = countTasksProgress(group.tasks);
   const pendingUnits = total - completed;
-  const head =
-    group.type === 'goal'
-      ? `
-        <div class="today-goal-group-head" style="--goal-color:${group.goal?.color || '#3b82f6'}">
-          <span class="today-goal-group-dot" aria-hidden="true"></span>
-          <span class="today-goal-group-title">${escapeHtml(group.goal?.title || '学习目标')}</span>
-          <span class="today-goal-group-meta">${pendingUnits}/${total}</span>
-        </div>
-      `
-      : `
+
+  if (group.type === 'custom') {
+    return `
+      <div class="today-goal-group custom-group">
         <div class="today-goal-group-head custom">
           <span class="today-goal-group-title">自定义任务</span>
           <span class="today-goal-group-meta">${pendingUnits}/${total}</span>
         </div>
-      `;
+        <div class="today-goal-group-items">
+          ${group.tasks.map((task) => renderTodayTaskBlock(task)).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  const goalId = group.goalId || '';
+  const goalTitle = group.goal?.title || '学习目标';
+  const collapsed = isTodayGoalGroupCollapsed(goalId);
+  const head = `
+    <button type="button" class="today-goal-group-head today-goal-group-toggle" data-goal-id="${goalId}" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
+      <span class="goal-group-chevron collapse-chevron" aria-hidden="true"></span>
+      <span class="today-goal-group-dot" aria-hidden="true"></span>
+      <span class="today-goal-group-title">${escapeHtml(goalTitle)}</span>
+      <span class="today-goal-group-meta">${pendingUnits}/${total}</span>
+    </button>
+  `;
 
   return `
-    <div class="today-goal-group${group.type === 'custom' ? ' custom-group' : ''}"${group.type === 'goal' ? ` style="--goal-color:${group.goal?.color || '#3b82f6'}"` : ''}>
+    <div class="today-goal-group${collapsed ? ' collapsed' : ''}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
       ${head}
-      <div class="today-goal-group-items">
-        ${group.tasks.map((task) => renderTodayTaskBlock(task)).join('')}
-      </div>
+      ${
+        !collapsed
+          ? `
+        <div class="today-goal-group-items">
+          ${group.tasks.map((task) => renderTodayTaskBlock(task)).join('')}
+        </div>
+      `
+          : ''
+      }
     </div>
   `;
 }
@@ -2522,6 +2550,13 @@ function bindEvents() {
   });
 
   $('#today-task-list').addEventListener('click', (e) => {
+    const goalGroupToggle = e.target.closest('.today-goal-group-toggle');
+    if (goalGroupToggle?.dataset.goalId) {
+      toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.goalId);
+      renderToday();
+      return;
+    }
+
     const cancelEditBtn = e.target.closest('.cancel-inline-edit-btn');
     if (cancelEditBtn) {
       clearTodayEditingState();

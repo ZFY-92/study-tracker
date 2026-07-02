@@ -1857,6 +1857,37 @@ body {
   border: 1px solid color-mix(in srgb, var(--goal-color, var(--primary)) 22%, var(--border));
 }
 
+.today-goal-group-head.today-goal-group-toggle {
+  width: 100%;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.today-goal-group-head.today-goal-group-toggle:hover {
+  background: color-mix(in srgb, var(--goal-color, var(--primary)) 14%, #fff);
+  border-color: color-mix(in srgb, var(--goal-color, var(--primary)) 35%, var(--border));
+}
+
+.today-goal-group-head.today-goal-group-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--goal-color, var(--primary)) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.goal-group-chevron {
+  flex-shrink: 0;
+}
+
+.today-goal-group.collapsed .goal-group-chevron {
+  transform: rotate(-45deg);
+  margin-top: 0.08rem;
+}
+
+.today-goal-group.collapsed .today-goal-group-head {
+  margin-bottom: 0;
+}
+
 .today-goal-group-head.custom {
   background: var(--bg-hover);
   border-color: var(--border);
