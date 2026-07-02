@@ -1,4 +1,4 @@
-const APP_VERSION = '34';
+const APP_VERSION = '35';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -12,11 +12,13 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, gymDays: Record<string, true>, gymReminderDays: number, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
 let state = {
   goals: [],
   dailyTasks: {},
   sleepRecords: {},
+  gymDays: {},
+  gymReminderDays: 2,
   tab: 'learning',
   view: 'home',
   filter: 'all',
@@ -124,6 +126,8 @@ function loadData() {
       state.pinnedGoalId = data.pinnedGoalId || null;
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
       state.sleepRecords = migrateSleepRecords(data.sleepRecords);
+      state.gymDays = migrateGymDays(data.gymDays);
+      state.gymReminderDays = normalizeGymReminderDays(data.gymReminderDays);
       state.carryOverDailyTasks = data.carryOverDailyTasks !== false;
       state.lastRolloverDate = data.lastRolloverDate || '';
     }
@@ -132,6 +136,8 @@ function loadData() {
     state.pinnedGoalId = null;
     state.dailyTasks = {};
     state.sleepRecords = {};
+    state.gymDays = {};
+    state.gymReminderDays = 2;
     state.carryOverDailyTasks = true;
     state.lastRolloverDate = '';
   }
@@ -193,6 +199,23 @@ function migrateSleepRecords(raw) {
   return result;
 }
 
+function migrateGymDays(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  /** @type {Record<string, true>} */
+  const result = {};
+  for (const [date, value] of Object.entries(raw)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (value) result[date] = true;
+  }
+  return result;
+}
+
+function normalizeGymReminderDays(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 2;
+  return Math.min(30, Math.max(1, Math.round(n)));
+}
+
 function saveData() {
   localStorage.setItem(
     STORAGE_KEY,
@@ -201,6 +224,8 @@ function saveData() {
       pinnedGoalId: state.pinnedGoalId,
       dailyTasks: state.dailyTasks,
       sleepRecords: state.sleepRecords,
+      gymDays: state.gymDays,
+      gymReminderDays: state.gymReminderDays,
       carryOverDailyTasks: state.carryOverDailyTasks,
       lastRolloverDate: state.lastRolloverDate,
     })
@@ -989,6 +1014,60 @@ function formatDateLabel(dateStr) {
     day: 'numeric',
     weekday: 'long',
   });
+}
+
+function daysBetweenDates(fromDateStr, toDateStr) {
+  const from = parseDateStr(fromDateStr);
+  const to = parseDateStr(toDateStr);
+  return Math.round((to - from) / 86400000);
+}
+
+function isGymDay(dateStr) {
+  return !!state.gymDays[dateStr];
+}
+
+function getLastGymDate(onOrBefore = todayStr()) {
+  const dates = Object.keys(state.gymDays)
+    .filter((d) => d <= onOrBefore)
+    .sort();
+  return dates.length ? dates[dates.length - 1] : null;
+}
+
+function getDaysSinceLastGym(onDate = todayStr()) {
+  const last = getLastGymDate(onDate);
+  if (!last) return null;
+  return daysBetweenDates(last, onDate);
+}
+
+function shouldShowGymReminder(onDate = todayStr()) {
+  if (onDate !== todayStr()) return false;
+  if (isGymDay(onDate)) return false;
+  const days = getDaysSinceLastGym(onDate);
+  if (days === null) return true;
+  return days > state.gymReminderDays;
+}
+
+function getGymReminderMessage() {
+  const days = getDaysSinceLastGym();
+  if (days === null) {
+    return '还没有健身记录，点击「今日健身」在日历上打卡吧';
+  }
+  return `已有 ${days} 天未健身（超过 ${state.gymReminderDays} 天），该动一动啦！`;
+}
+
+function toggleGymDay(date = todayStr()) {
+  if (date > todayStr()) return;
+  if (state.gymDays[date]) {
+    delete state.gymDays[date];
+    saveData();
+    showToast('已取消健身记录');
+  } else {
+    state.gymDays[date] = true;
+    saveData();
+    showToast('已记录今日健身');
+  }
+  if (state.tab === 'today') renderToday();
+  else render();
 }
 
 function getDailyTaskStatsForDate(date = getSelectedDailyDate()) {
@@ -1958,7 +2037,7 @@ function renderTodayGoalGroup(group, sectionKey = 'pending') {
   const goalTitle = group.goal?.title || '学习目标';
   const collapsed = isTodayGoalGroupCollapsed(sectionKey, goalId);
   const head = `
-    <button type="button" class="today-goal-group-head today-goal-group-toggle" data-section="${sectionKey}" data-goal-id="${goalId}" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
+    <button type="button" class="today-goal-group-head today-goal-group-toggle" data-goal-section="${sectionKey}" data-goal-id="${goalId}" aria-expanded="${!collapsed}" title="${collapsed ? '展开' : '收起'}" style="--goal-color:${group.goal?.color || '#3b82f6'}">
       <span class="goal-group-chevron collapse-chevron" aria-hidden="true"></span>
       <span class="today-goal-group-dot" aria-hidden="true"></span>
       <span class="today-goal-group-title">${escapeHtml(goalTitle)}</span>
@@ -2040,6 +2119,7 @@ function renderDailyCalendar() {
     const dateStr = dateStrFromParts(year, month, day);
     const isFuture = dateStr > today;
     const status = getDailyTaskDayStatus(dateStr);
+    const hasGym = isGymDay(dateStr);
     const classes = [
       'calendar-day',
       dateStr === selected ? 'selected' : '',
@@ -2047,15 +2127,23 @@ function renderDailyCalendar() {
       status !== 'none' ? 'has-tasks' : '',
       status === 'done' ? 'all-done' : '',
       status === 'partial' ? 'partial' : '',
+      hasGym ? 'has-gym' : '',
       isFuture ? 'future' : '',
     ]
       .filter(Boolean)
       .join(' ');
 
+    const ariaParts = [];
+    if (status !== 'none') ariaParts.push('有任务记录');
+    if (hasGym) ariaParts.push('已健身');
+
     cells += `
-      <button type="button" class="${classes}" data-date="${dateStr}" ${isFuture ? 'disabled' : ''} aria-label="${month}月${day}日${status !== 'none' ? '，有任务记录' : ''}">
+      <button type="button" class="${classes}" data-date="${dateStr}" ${isFuture ? 'disabled' : ''} aria-label="${month}月${day}日${ariaParts.length ? `，${ariaParts.join('，')}` : ''}">
         <span class="calendar-day-num">${day}</span>
-        ${status !== 'none' ? '<span class="calendar-day-dot" aria-hidden="true"></span>' : ''}
+        <span class="calendar-day-marks" aria-hidden="true">
+          ${hasGym ? '<span class="calendar-day-gym">💪</span>' : ''}
+          ${status !== 'none' ? '<span class="calendar-day-dot"></span>' : ''}
+        </span>
       </button>
     `;
   }
@@ -2104,6 +2192,24 @@ function renderToday() {
     if (input) input.placeholder = isToday ? '写一条今天要做的任务…' : '为这一天补充一条任务…';
   }
   if (importBtn) importBtn.hidden = !isToday;
+
+  const gymBtn = $('#toggle-gym-day-btn');
+  if (gymBtn) {
+    gymBtn.hidden = !isToday;
+    const logged = isGymDay(todayStr());
+    gymBtn.classList.toggle('active', logged);
+    gymBtn.setAttribute('aria-pressed', String(logged));
+    const gymLabel = gymBtn.querySelector('.today-action-tile-label');
+    if (gymLabel) gymLabel.textContent = logged ? '已健身' : '今日健身';
+  }
+
+  const gymReminder = $('#today-gym-reminder');
+  const gymReminderText = $('#today-gym-reminder-text');
+  if (gymReminder && gymReminderText) {
+    const showReminder = isToday && shouldShowGymReminder();
+    gymReminder.hidden = !showReminder;
+    if (showReminder) gymReminderText.textContent = getGymReminderMessage();
+  }
 
   const calendarCard = $('#today-calendar-card');
   const calendarToggle = $('#toggle-today-calendar-btn');
@@ -2222,6 +2328,9 @@ function renderProfile() {
 
   const carryToggle = $('#carry-over-toggle');
   if (carryToggle) carryToggle.checked = state.carryOverDailyTasks;
+
+  const gymDaysInput = $('#gym-reminder-days-input');
+  if (gymDaysInput) gymDaysInput.value = String(state.gymReminderDays);
 }
 
 function render() {
@@ -2594,8 +2703,8 @@ function bindEvents() {
     }
 
     const goalGroupToggle = e.target.closest('.today-goal-group-toggle');
-    if (goalGroupToggle?.dataset.goalId && goalGroupToggle.dataset.section) {
-      toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.section, goalGroupToggle.dataset.goalId);
+    if (goalGroupToggle?.dataset.goalId && goalGroupToggle.dataset.goalSection) {
+      toggleTodayGoalGroupCollapsed(goalGroupToggle.dataset.goalSection, goalGroupToggle.dataset.goalId);
       renderToday();
       return;
     }
@@ -2707,6 +2816,18 @@ function bindEvents() {
   $('#toggle-today-calendar-btn')?.addEventListener('click', () => {
     state.todayCalendarOpen = !state.todayCalendarOpen;
     renderToday();
+  });
+
+  $('#toggle-gym-day-btn')?.addEventListener('click', () => {
+    toggleGymDay(todayStr());
+  });
+
+  $('#gym-reminder-days-input')?.addEventListener('change', (e) => {
+    state.gymReminderDays = normalizeGymReminderDays(e.target.value);
+    e.target.value = String(state.gymReminderDays);
+    saveData();
+    if (state.tab === 'today') renderToday();
+    showToast(`健身提醒已设为超过 ${state.gymReminderDays} 天`);
   });
 
   $('#import-overlay-backdrop').addEventListener('click', closeImportOverlay);

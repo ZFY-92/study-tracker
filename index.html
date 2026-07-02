@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=34" />
+    <link rel="stylesheet" href="styles.css?v=35" />
     <title>学习进度</title>
   </head>
   <body>
@@ -91,6 +91,10 @@
                 <span class="today-action-tile-icon" aria-hidden="true">🎯</span>
                 <span class="today-action-tile-label">添加今日目标</span>
               </button>
+              <button type="button" class="today-action-tile today-action-tile-gym" id="toggle-gym-day-btn" aria-pressed="false">
+                <span class="today-action-tile-icon" aria-hidden="true">💪</span>
+                <span class="today-action-tile-label">今日健身</span>
+              </button>
             </div>
             <form class="today-add-form" id="today-add-form">
               <input type="text" name="title" maxlength="80" placeholder="写一条自定义任务…" required />
@@ -104,8 +108,13 @@
               <span class="calendar-legend-item"><span class="calendar-legend-dot partial"></span>部分完成</span>
               <span class="calendar-legend-item"><span class="calendar-legend-dot done"></span>全部完成</span>
               <span class="calendar-legend-item"><span class="calendar-legend-dot has"></span>有任务</span>
+              <span class="calendar-legend-item"><span class="calendar-legend-gym">💪</span>健身</span>
             </div>
           </article>
+          <div class="today-gym-reminder" id="today-gym-reminder" hidden>
+            <span class="today-gym-reminder-icon" aria-hidden="true">💪</span>
+            <p id="today-gym-reminder-text"></p>
+          </div>
           <div class="today-task-list" id="today-task-list"></div>
           <div class="empty-state" id="today-empty-state" hidden>
             <div class="empty-icon">📝</div>
@@ -230,6 +239,20 @@
             </article>
             <article class="profile-card">
               <div class="profile-card-head">
+                <span class="profile-card-icon" aria-hidden="true">💪</span>
+                <div>
+                  <h3>健身提醒</h3>
+                  <p class="profile-desc">超过设定天数未健身时，在今日任务页提醒</p>
+                </div>
+              </div>
+              <label class="profile-field-inline">
+                <span>超过</span>
+                <input type="number" id="gym-reminder-days-input" min="1" max="30" step="1" value="2" />
+                <span>天未健身时提醒</span>
+              </label>
+            </article>
+            <article class="profile-card">
+              <div class="profile-card-head">
                 <span class="profile-card-icon" aria-hidden="true">📲</span>
                 <div>
                   <h3>安装应用</h3>
@@ -333,6 +356,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=34" type="module"></script>
+    <script src="app.js?v=35" type="module"></script>
   </body>
 </html>
