@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=25" />
+    <link rel="stylesheet" href="styles.css?v=26" />
     <title>学习进度</title>
   </head>
   <body>
@@ -97,78 +97,81 @@
         </section>
 
         <!-- 作息记录 -->
-        <section class="view" id="view-sleep" hidden>
-          <h2 class="view-title">作息记录</h2>
-          <p class="sleep-page-hint">记录起床/睡觉时间，自动计算睡眠时长，也支持手动录入与删除</p>
-          <div class="sleep-today-card">
-            <p class="sleep-today-date" id="sleep-today-date"></p>
-            <div class="sleep-record-grid">
-              <div class="sleep-record-block wake">
-                <div class="sleep-record-label">🌅 起床</div>
-                <div class="sleep-record-time" id="sleep-wake-display">—</div>
-                <button type="button" class="btn btn-primary sleep-record-btn" id="record-wake-btn">现在记录</button>
-                <form class="sleep-manual-form" id="wake-manual-form" data-type="wake">
-                  <input type="time" id="wake-manual-input" aria-label="手动输入起床时间" />
-                  <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
-                </form>
-                <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-wake-btn" data-type="wake" hidden>删除记录</button>
-              </div>
-              <div class="sleep-record-block bed">
-                <div class="sleep-record-label">🌙 睡觉</div>
-                <div class="sleep-record-time" id="sleep-bed-display">—</div>
-                <button type="button" class="btn btn-primary sleep-record-btn bed-btn" id="record-bed-btn">现在记录</button>
-                <form class="sleep-manual-form" id="bed-manual-form" data-type="bed">
-                  <input type="time" id="bed-manual-input" aria-label="手动输入睡觉时间" />
-                  <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
-                </form>
-                <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-bed-btn" data-type="bed" hidden>删除记录</button>
-              </div>
-            </div>
-          </div>
-          <div class="sleep-duration-card">
-            <div class="sleep-duration-head">
-              <div class="sleep-duration-label">💤 睡眠时长</div>
-              <div class="sleep-record-time sleep-duration-value" id="sleep-duration-display">—</div>
-            </div>
-            <p class="sleep-duration-hint" id="sleep-duration-hint">记录起床/睡觉后自动计算，或下方手动录入</p>
-            <form class="sleep-duration-form" id="duration-manual-form" data-date="">
-              <div class="sleep-duration-inputs">
-                <input type="number" min="0" max="23" id="duration-hours-input" class="sleep-duration-h" placeholder="0" aria-label="小时" />
-                <span class="sleep-duration-sep">时</span>
-                <input type="number" min="0" max="59" id="duration-minutes-input" class="sleep-duration-m" placeholder="0" aria-label="分钟" />
-                <span class="sleep-duration-sep">分</span>
-              </div>
-              <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
-            </form>
-            <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-duration-btn" data-type="duration" hidden>删除记录</button>
-          </div>
-          <div class="sleep-chart-section">
-            <div class="sleep-chart-head">
-              <h3 class="sleep-section-title">趋势曲线</h3>
-              <div class="sleep-chart-controls">
-                <div class="sleep-type-toggle" role="group" aria-label="曲线类型">
-                  <button type="button" class="sleep-type-btn active" data-chart-type="wake">起床</button>
-                  <button type="button" class="sleep-type-btn" data-chart-type="bed">睡觉</button>
-                  <button type="button" class="sleep-type-btn" data-chart-type="duration">睡眠时长</button>
-                </div>
-                <div class="sleep-range-toggle" role="group" aria-label="图表范围">
-                  <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
-                  <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
-                </div>
-              </div>
-            </div>
-            <div class="sleep-charts" id="sleep-charts"></div>
-          </div>
-          <div class="sleep-history-section">
-            <button type="button" class="sleep-history-toggle" id="sleep-history-toggle" aria-expanded="false" aria-controls="sleep-history-panel">
-              <span class="sleep-history-toggle-text">
-                <span class="sleep-section-title">近期记录</span>
-                <span class="sleep-history-count" id="sleep-history-count">暂无记录</span>
-              </span>
-              <span class="sleep-history-toggle-icon" aria-hidden="true">▼</span>
+        <section class="view view-sleep-fit" id="view-sleep" hidden>
+          <nav class="sleep-subnav" role="tablist" aria-label="作息分区">
+            <button type="button" class="sleep-subnav-btn active" data-sleep-panel="record" role="tab" aria-selected="true">记录</button>
+            <button type="button" class="sleep-subnav-btn" data-sleep-panel="chart" role="tab" aria-selected="false">趋势</button>
+            <button type="button" class="sleep-subnav-btn" data-sleep-panel="history" role="tab" aria-selected="false">
+              历史<span class="sleep-subnav-badge" id="sleep-history-count">暂无</span>
             </button>
-            <div class="sleep-history-panel" id="sleep-history-panel" hidden>
-              <div class="sleep-history-table-wrap" id="sleep-history-wrap"></div>
+          </nav>
+          <div class="sleep-panels">
+            <div class="sleep-panel" id="sleep-panel-record" data-panel="record" role="tabpanel">
+              <p class="sleep-today-date" id="sleep-today-date"></p>
+              <div class="sleep-today-card">
+                <div class="sleep-record-grid">
+                  <div class="sleep-record-block wake">
+                    <div class="sleep-record-label">🌅 起床</div>
+                    <div class="sleep-record-time" id="sleep-wake-display">—</div>
+                    <button type="button" class="btn btn-primary sleep-record-btn" id="record-wake-btn">现在记录</button>
+                    <form class="sleep-manual-form" id="wake-manual-form" data-type="wake">
+                      <input type="time" id="wake-manual-input" aria-label="手动输入起床时间" />
+                      <button type="submit" class="btn btn-ghost btn-sm">保存</button>
+                    </form>
+                    <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-wake-btn" data-type="wake" hidden>删除</button>
+                  </div>
+                  <div class="sleep-record-block bed">
+                    <div class="sleep-record-label">🌙 睡觉</div>
+                    <div class="sleep-record-time" id="sleep-bed-display">—</div>
+                    <button type="button" class="btn btn-primary sleep-record-btn bed-btn" id="record-bed-btn">现在记录</button>
+                    <form class="sleep-manual-form" id="bed-manual-form" data-type="bed">
+                      <input type="time" id="bed-manual-input" aria-label="手动输入睡觉时间" />
+                      <button type="submit" class="btn btn-ghost btn-sm">保存</button>
+                    </form>
+                    <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-bed-btn" data-type="bed" hidden>删除</button>
+                  </div>
+                </div>
+                <div class="sleep-duration-strip">
+                  <div class="sleep-duration-strip-head">
+                    <span class="sleep-duration-label">💤 睡眠时长</span>
+                    <div class="sleep-record-time sleep-duration-value" id="sleep-duration-display">—</div>
+                  </div>
+                  <p class="sleep-duration-hint" id="sleep-duration-hint">记录起床/睡觉后自动计算</p>
+                  <form class="sleep-duration-form" id="duration-manual-form" data-date="">
+                    <div class="sleep-duration-inputs">
+                      <input type="number" min="0" max="23" id="duration-hours-input" class="sleep-duration-h" placeholder="0" aria-label="小时" />
+                      <span class="sleep-duration-sep">时</span>
+                      <input type="number" min="0" max="59" id="duration-minutes-input" class="sleep-duration-m" placeholder="0" aria-label="分钟" />
+                      <span class="sleep-duration-sep">分</span>
+                    </div>
+                    <button type="submit" class="btn btn-ghost btn-sm">保存</button>
+                  </form>
+                  <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-duration-btn" data-type="duration" hidden>删除</button>
+                </div>
+              </div>
+            </div>
+            <div class="sleep-panel" id="sleep-panel-chart" data-panel="chart" role="tabpanel" hidden>
+              <div class="sleep-chart-section sleep-chart-section-embedded">
+                <div class="sleep-chart-head">
+                  <div class="sleep-chart-controls">
+                    <div class="sleep-type-toggle" role="group" aria-label="曲线类型">
+                      <button type="button" class="sleep-type-btn active" data-chart-type="wake">起床</button>
+                      <button type="button" class="sleep-type-btn" data-chart-type="bed">睡觉</button>
+                      <button type="button" class="sleep-type-btn" data-chart-type="duration">时长</button>
+                    </div>
+                    <div class="sleep-range-toggle" role="group" aria-label="图表范围">
+                      <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
+                      <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="sleep-charts" id="sleep-charts"></div>
+              </div>
+            </div>
+            <div class="sleep-panel" id="sleep-panel-history" data-panel="history" role="tabpanel" hidden>
+              <div class="sleep-history-panel-inner">
+                <div class="sleep-history-table-wrap" id="sleep-history-wrap"></div>
+              </div>
             </div>
           </div>
         </section>
@@ -328,6 +331,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=25" type="module"></script>
+    <script src="app.js?v=26" type="module"></script>
   </body>
 </html>
