@@ -1988,6 +1988,100 @@ body {
   background: #4f46e5;
 }
 
+.sleep-duration-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  box-shadow: var(--shadow);
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+.sleep-duration-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sleep-duration-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.sleep-duration-value {
+  font-size: 2rem;
+}
+
+.sleep-duration-hint {
+  margin: 0.5rem 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sleep-duration-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sleep-duration-inputs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.sleep-duration-h,
+.sleep-duration-m {
+  width: 3.5rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-family: inherit;
+  text-align: center;
+  background: var(--bg-card);
+  color: var(--text);
+}
+
+.sleep-duration-sep {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sleep-duration-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sleep-duration-auto small {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+}
+
+.sleep-history-duration-form {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.sleep-history-duration-form .sleep-duration-h,
+.sleep-history-duration-form .sleep-duration-m {
+  width: 2.75rem;
+  padding: 0.3rem 0.35rem;
+  font-size: 0.82rem;
+}
+
 .sleep-chart-section,
 .sleep-history-section {
   margin-bottom: 1.25rem;

@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=21" />
+    <link rel="stylesheet" href="styles.css?v=22" />
     <title>学习进度</title>
   </head>
   <body>
@@ -99,7 +99,7 @@
         <!-- 作息记录 -->
         <section class="view" id="view-sleep" hidden>
           <h2 class="view-title">作息记录</h2>
-          <p class="sleep-page-hint">点击按钮记录当前时间，或手动输入；支持删除已录入记录</p>
+          <p class="sleep-page-hint">记录起床/睡觉时间，自动计算睡眠时长，也支持手动录入与删除</p>
           <div class="sleep-today-card">
             <p class="sleep-today-date" id="sleep-today-date"></p>
             <div class="sleep-record-grid">
@@ -125,12 +125,29 @@
               </div>
             </div>
           </div>
+          <div class="sleep-duration-card">
+            <div class="sleep-duration-head">
+              <div class="sleep-duration-label">💤 睡眠时长</div>
+              <div class="sleep-record-time sleep-duration-value" id="sleep-duration-display">—</div>
+            </div>
+            <p class="sleep-duration-hint" id="sleep-duration-hint">记录起床/睡觉后自动计算，或下方手动录入</p>
+            <form class="sleep-duration-form" id="duration-manual-form" data-date="">
+              <div class="sleep-duration-inputs">
+                <input type="number" min="0" max="23" id="duration-hours-input" class="sleep-duration-h" placeholder="0" aria-label="小时" />
+                <span class="sleep-duration-sep">时</span>
+                <input type="number" min="0" max="59" id="duration-minutes-input" class="sleep-duration-m" placeholder="0" aria-label="分钟" />
+                <span class="sleep-duration-sep">分</span>
+              </div>
+              <button type="submit" class="btn btn-ghost btn-sm">手动保存</button>
+            </form>
+            <button type="button" class="btn btn-ghost btn-sm sleep-delete-btn" id="delete-duration-btn" data-type="duration" hidden>删除记录</button>
+          </div>
           <div class="sleep-chart-section">
             <div class="sleep-chart-head">
               <h3 class="sleep-section-title">趋势曲线</h3>
               <div class="sleep-range-toggle" role="group" aria-label="图表范围">
                 <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
-                <button type="button" class="sleep-range-btn" data-range="month">每月</button>
+                <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
               </div>
             </div>
             <div class="sleep-charts" id="sleep-charts"></div>
@@ -296,6 +313,6 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=21" type="module"></script>
+    <script src="app.js?v=22" type="module"></script>
   </body>
 </html>

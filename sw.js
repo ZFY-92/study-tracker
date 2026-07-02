@@ -1,4 +1,4 @@
-const APP_VERSION = '21';
+const APP_VERSION = '22';
 const CACHE_NAME = `learning-progress-v${APP_VERSION}`;
 const ASSETS = [
   './',

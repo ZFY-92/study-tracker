@@ -1,4 +1,4 @@
-const APP_VERSION = '21';
+const APP_VERSION = '22';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -6,7 +6,7 @@ const VERSION_KEY = 'learning-progress-app-version';
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string }} DailyTask */
 
-/** @typedef {{ wake?: string, bed?: string }} SleepDayRecord */
+/** @typedef {{ wake?: string, bed?: string, duration?: number }} SleepDayRecord */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'calendar' | 'sleep' | 'profile'} TabName */
@@ -160,7 +160,10 @@ function migrateSleepRecords(raw) {
     const entry = {};
     if (typeof record.wake === 'string' && /^\d{2}:\d{2}$/.test(record.wake)) entry.wake = record.wake;
     if (typeof record.bed === 'string' && /^\d{2}:\d{2}$/.test(record.bed)) entry.bed = record.bed;
-    if (entry.wake || entry.bed) result[date] = entry;
+    if (typeof record.duration === 'number' && record.duration > 0 && record.duration <= 24 * 60) {
+      entry.duration = Math.round(record.duration);
+    }
+    if (entry.wake || entry.bed || entry.duration != null) result[date] = entry;
   }
   return result;
 }
@@ -293,12 +296,13 @@ function deleteSleepTime(date, type) {
   if (!record?.[type]) return;
 
   delete record[type];
-  if (!record.wake && !record.bed) {
+  if (!record.wake && !record.bed && record.duration == null) {
     delete state.sleepRecords[date];
   }
 
   saveData();
-  showToast(`已删除${type === 'wake' ? '起床' : '睡觉'}记录`);
+  const labels = { wake: '起床', bed: '睡觉', duration: '睡眠时长' };
+  showToast(`已删除${labels[type] || '记录'}`);
   if (state.tab === 'sleep') renderSleep();
 }
 
@@ -314,8 +318,100 @@ function saveManualSleepTime(date, type, time) {
   setSleepTime(date, type, time);
 }
 
+function offsetDateStr(dateStr, offsetDays) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, mo - 1, d);
+  dt.setDate(dt.getDate() + offsetDays);
+  return dateStrFromParts(dt.getFullYear(), dt.getMonth() + 1, dt.getDate());
+}
+
+function parseDateTimeMs(dateStr, timeStr) {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, m] = timeStr.split(':').map(Number);
+  return new Date(y, mo - 1, d, h, m).getTime();
+}
+
+function getSleepDurationMinutes(wakeDate) {
+  const wakeRecord = state.sleepRecords[wakeDate];
+  if (!wakeRecord?.wake) return null;
+
+  const wakeTs = parseDateTimeMs(wakeDate, wakeRecord.wake);
+  const candidates = [];
+
+  const prevDate = offsetDateStr(wakeDate, -1);
+  if (state.sleepRecords[prevDate]?.bed) {
+    candidates.push(parseDateTimeMs(prevDate, state.sleepRecords[prevDate].bed));
+  }
+  if (wakeRecord.bed) {
+    candidates.push(parseDateTimeMs(wakeDate, wakeRecord.bed));
+  }
+
+  let best = null;
+  for (const bedTs of candidates) {
+    if (bedTs >= wakeTs) continue;
+    const duration = Math.round((wakeTs - bedTs) / 60000);
+    if (duration >= 30 && duration <= 16 * 60 && (!best || bedTs > best.bedTs)) {
+      best = { bedTs, duration };
+    }
+  }
+
+  return best?.duration ?? null;
+}
+
+function getSleepDurationForDate(date) {
+  const record = state.sleepRecords[date];
+  if (record?.duration != null) {
+    return { minutes: record.duration, source: 'manual' };
+  }
+  const computed = getSleepDurationMinutes(date);
+  if (computed != null) return { minutes: computed, source: 'auto' };
+  return null;
+}
+
+function formatDuration(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}分钟`;
+  if (m === 0) return `${h}小时`;
+  return `${h}小时${m}分`;
+}
+
+function formatDurationChart(minutes) {
+  const h = minutes / 60;
+  return Number.isInteger(h) ? `${h}h` : `${h.toFixed(1)}h`;
+}
+
+function setSleepDuration(date, hours, minutes) {
+  const h = Number(hours);
+  const m = Number(minutes);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0 || m >= 60) {
+    showToast('请输入有效的时长');
+    return false;
+  }
+  const total = Math.round(h * 60 + m);
+  if (total <= 0 || total > 24 * 60) {
+    showToast('睡眠时长应在 1 分钟到 24 小时之间');
+    return false;
+  }
+
+  const record = ensureSleepRecord(date);
+  const hadValue = record.duration != null;
+  record.duration = total;
+  saveData();
+  showToast(hadValue ? `已更新睡眠时长为 ${formatDuration(total)}` : `已记录睡眠时长 ${formatDuration(total)}`);
+  if (state.tab === 'sleep') renderSleep();
+  return true;
+}
+
+function saveManualSleepDuration(date, hours, minutes) {
+  if (hours === '' && minutes === '') {
+    showToast('请先输入睡眠时长');
+    return;
+  }
+  setSleepDuration(date, hours || 0, minutes || 0);
+}
+
 function getSleepChartDates(range = state.sleepChartRange) {
-  const today = todayStr();
   const dates = [];
 
   if (range === 'week') {
@@ -328,11 +424,11 @@ function getSleepChartDates(range = state.sleepChartRange) {
     return dates;
   }
 
-  const [year, month] = today.split('-').map(Number);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const todayDay = Number(today.split('-')[2]);
-  for (let day = 1; day <= todayDay; day += 1) {
-    dates.push(dateStrFromParts(year, month, day));
+  const d = new Date();
+  d.setDate(d.getDate() - 29);
+  for (let i = 0; i < 30; i += 1) {
+    dates.push(dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate()));
+    d.setDate(d.getDate() + 1);
   }
   return dates;
 }
@@ -340,7 +436,7 @@ function getSleepChartDates(range = state.sleepChartRange) {
 function getRecentSleepDates(limit = 14) {
   const dates = Object.keys(state.sleepRecords).filter((date) => {
     const r = state.sleepRecords[date];
-    return r && (r.wake || r.bed);
+    return r && (r.wake || r.bed || r.duration != null || getSleepDurationMinutes(date) != null);
   });
   dates.sort((a, b) => b.localeCompare(a));
   return dates.slice(0, limit);
@@ -427,6 +523,78 @@ function buildSleepTimeChart({ title, color, dates, field, forBed }) {
   `;
 }
 
+function buildSleepDurationChart({ dates }) {
+  const width = 360;
+  const height = 180;
+  const pad = { top: 16, right: 16, bottom: 32, left: 48 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+
+  const slots = dates.map((date, index) => {
+    const info = getSleepDurationForDate(date);
+    return { date, index, minutes: info?.minutes ?? null };
+  });
+
+  const plotted = slots.filter((slot) => slot.minutes != null);
+  if (plotted.length === 0) {
+    return `
+      <article class="sleep-chart-card">
+        <h4 class="sleep-chart-title">睡眠时长</h4>
+        <p class="sleep-chart-empty">暂无数据，记录起床/睡觉时间或手动录入时长</p>
+      </article>
+    `;
+  }
+
+  const minuteValues = plotted.map((slot) => slot.minutes);
+  let minM = Math.min(...minuteValues);
+  let maxM = Math.max(...minuteValues);
+  const span = Math.max(maxM - minM, 60);
+  minM = Math.max(0, Math.floor((minM - span * 0.15) / 30) * 30);
+  maxM = Math.ceil((maxM + span * 0.15) / 30) * 30;
+  const rangeM = Math.max(maxM - minM, 30);
+
+  const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
+  const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
+
+  const points = plotted.map((slot) => `${toX(slot.index)},${toY(slot.minutes)}`).join(' ');
+  const dots = plotted
+    .map((slot) => `<circle cx="${toX(slot.index)}" cy="${toY(slot.minutes)}" r="4" fill="#10b981" />`)
+    .join('');
+
+  const yTicks = 4;
+  const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
+    const mins = minM + (rangeM * i) / yTicks;
+    const y = pad.top + chartH - (chartH * i) / yTicks;
+    return `
+      <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="sleep-grid-line" />
+      <text x="${pad.left - 8}" y="${y + 4}" class="sleep-axis-label" text-anchor="end">${formatDurationChart(Math.round(mins))}</text>
+    `;
+  }).join('');
+
+  const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
+  const xLabels = dates
+    .map((date, index) => {
+      if (index % xStep !== 0 && index !== dates.length - 1) return '';
+      const label = date.slice(5).replace('-', '/');
+      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${label}</text>`;
+    })
+    .join('');
+
+  return `
+    <article class="sleep-chart-card">
+      <h4 class="sleep-chart-title">睡眠时长</h4>
+      <div class="sleep-chart-svg-wrap">
+        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="睡眠时长">
+          ${yLabels}
+          <polyline points="${points}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+          ${dots}
+          ${xLabels}
+        </svg>
+      </div>
+    </article>
+  `;
+}
+
 function renderSleepHistoryCell(date, type, value) {
   const label = type === 'wake' ? '起床' : '睡觉';
   if (value) {
@@ -441,6 +609,33 @@ function renderSleepHistoryCell(date, type, value) {
   return `
     <form class="sleep-history-manual-form" data-date="${date}" data-type="${type}">
       <input type="time" required aria-label="补录${label}时间" />
+      <button type="submit" class="btn btn-ghost btn-sm">保存</button>
+    </form>
+  `;
+}
+
+function renderSleepDurationHistoryCell(date) {
+  const record = state.sleepRecords[date] || {};
+  const info = getSleepDurationForDate(date);
+
+  if (record.duration != null) {
+    return `
+      <span class="sleep-history-value">
+        <span class="sleep-history-time">${formatDuration(record.duration)}</span>
+        <button type="button" class="icon-btn sleep-history-delete-btn" data-date="${date}" data-type="duration" aria-label="删除睡眠时长">✕</button>
+      </span>
+    `;
+  }
+
+  if (info?.source === 'auto') {
+    return `<span class="sleep-duration-auto">${formatDuration(info.minutes)}<small>自动</small></span>`;
+  }
+
+  return `
+    <form class="sleep-history-duration-form" data-date="${date}">
+      <input type="number" min="0" max="23" class="sleep-duration-h" placeholder="时" aria-label="小时" />
+      <span class="sleep-duration-sep">时</span>
+      <input type="number" min="0" max="59" class="sleep-duration-m" placeholder="分" aria-label="分钟" />
       <button type="submit" class="btn btn-ghost btn-sm">保存</button>
     </form>
   `;
@@ -484,6 +679,34 @@ function renderSleep() {
   if (wakeDelete) wakeDelete.hidden = !record.wake;
   if (bedDelete) bedDelete.hidden = !record.bed;
 
+  const durationEl = $('#sleep-duration-display');
+  const durationHint = $('#sleep-duration-hint');
+  const durationDelete = $('#delete-duration-btn');
+  const durationHours = $('#duration-hours-input');
+  const durationMinutes = $('#duration-minutes-input');
+  const durationInfo = getSleepDurationForDate(today);
+
+  if (durationEl) {
+    durationEl.textContent = durationInfo ? formatDuration(durationInfo.minutes) : '—';
+    durationEl.classList.toggle('has-value', !!durationInfo);
+  }
+  if (durationHint) {
+    if (record.duration != null) {
+      durationHint.textContent = '已手动录入';
+    } else if (durationInfo?.source === 'auto') {
+      durationHint.textContent = '根据昨早睡床与今日起床自动计算';
+    } else {
+      durationHint.textContent = '记录起床/睡觉后自动计算，或下方手动录入';
+    }
+  }
+  if (durationDelete) durationDelete.hidden = record.duration == null;
+  if (durationHours && document.activeElement !== durationHours && record.duration != null) {
+    durationHours.value = String(Math.floor(record.duration / 60));
+  }
+  if (durationMinutes && document.activeElement !== durationMinutes && record.duration != null) {
+    durationMinutes.value = String(record.duration % 60);
+  }
+
   $$('.sleep-range-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.range === state.sleepChartRange);
   });
@@ -494,6 +717,7 @@ function renderSleep() {
     chartsEl.innerHTML = `
       ${buildSleepTimeChart({ title: '起床时间', color: '#f59e0b', dates, field: 'wake', forBed: false })}
       ${buildSleepTimeChart({ title: '睡觉时间', color: '#6366f1', dates, field: 'bed', forBed: true })}
+      ${buildSleepDurationChart({ dates })}
     `;
   }
 
@@ -506,7 +730,7 @@ function renderSleep() {
       historyEl.innerHTML = `
         <table class="sleep-history-table">
           <thead>
-            <tr><th>日期</th><th>起床</th><th>睡觉</th></tr>
+            <tr><th>日期</th><th>起床</th><th>睡觉</th><th>睡眠时长</th></tr>
           </thead>
           <tbody>
             ${recent
@@ -518,6 +742,7 @@ function renderSleep() {
                     <td>${label}</td>
                     <td>${renderSleepHistoryCell(date, 'wake', r.wake)}</td>
                     <td>${renderSleepHistoryCell(date, 'bed', r.bed)}</td>
+                    <td>${renderSleepDurationHistoryCell(date)}</td>
                   </tr>
                 `;
               })
@@ -897,7 +1122,9 @@ function updateHeader() {
     const parts = [];
     if (record.wake) parts.push(`起床 ${record.wake}`);
     if (record.bed) parts.push(`睡觉 ${record.bed}`);
-    pageSubtitle.textContent = parts.length ? parts.join(' · ') : '记录每日起床与睡觉时间';
+    const durationInfo = getSleepDurationForDate(today);
+    if (durationInfo) parts.push(`睡眠 ${formatDuration(durationInfo.minutes)}`);
+    pageSubtitle.textContent = parts.length ? parts.join(' · ') : '记录每日起床、睡觉与睡眠时长';
     pageSubtitle.hidden = false;
     return;
   }
@@ -1690,6 +1917,16 @@ function bindEvents() {
   $('#record-bed-btn')?.addEventListener('click', () => recordSleepTime('bed'));
 
   $('#view-sleep')?.addEventListener('submit', (e) => {
+    const durationForm = e.target.closest('.sleep-duration-form, .sleep-history-duration-form');
+    if (durationForm) {
+      e.preventDefault();
+      const date = durationForm.dataset.date || todayStr();
+      const hInput = durationForm.querySelector('.sleep-duration-h, #duration-hours-input');
+      const mInput = durationForm.querySelector('.sleep-duration-m, #duration-minutes-input');
+      saveManualSleepDuration(date, hInput?.value ?? '', mInput?.value ?? '');
+      return;
+    }
+
     const form = e.target.closest('.sleep-manual-form, .sleep-history-manual-form');
     if (!form) return;
     e.preventDefault();
@@ -1713,7 +1950,7 @@ function bindEvents() {
     if (deleteBtn) {
       const date = deleteBtn.dataset.date || todayStr();
       const type = deleteBtn.dataset.type;
-      if (type !== 'wake' && type !== 'bed') return;
+      if (type !== 'wake' && type !== 'bed' && type !== 'duration') return;
       deleteSleepTime(date, type);
     }
   });
