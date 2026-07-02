@@ -1,4 +1,4 @@
-const APP_VERSION = '36';
+const APP_VERSION = '37';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -74,6 +74,29 @@ function yesterdayStr() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+function tomorrowStr() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  return dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate());
+}
+
+function maxPlannableDateStr() {
+  return tomorrowStr();
+}
+
+function isBeyondPlannableDate(dateStr) {
+  return dateStr > maxPlannableDateStr();
+}
+
+function isTomorrowSelected() {
+  return getSelectedDailyDate() === tomorrowStr();
+}
+
+function canPlanTasksForSelectedDate() {
+  const selected = getSelectedDailyDate();
+  return selected === todayStr() || selected === tomorrowStr();
 }
 
 function migrateGoal(goal) {
@@ -234,7 +257,8 @@ function saveData() {
 
 function syncSelectedDailyDate() {
   const today = todayStr();
-  if (!state.selectedDailyDate || state.selectedDailyDate > today) {
+  const maxPlan = maxPlannableDateStr();
+  if (!state.selectedDailyDate || state.selectedDailyDate > maxPlan) {
     state.selectedDailyDate = today;
   }
   state.calendarMonth = state.selectedDailyDate.slice(0, 7);
@@ -1443,7 +1467,7 @@ function navigateTo(view, options = {}) {
 
 function switchTab(tab) {
   state.tab = tab;
-  if (tab === 'today' && state.selectedDailyDate > todayStr()) {
+  if (tab === 'today' && isBeyondPlannableDate(state.selectedDailyDate)) {
     state.selectedDailyDate = todayStr();
     state.calendarMonth = todayStr().slice(0, 7);
   }
@@ -1526,11 +1550,12 @@ function updateHeader() {
     editBtn.hidden = true;
     const selected = getSelectedDailyDate();
     const isToday = isTodaySelected();
+    const isTomorrow = isTomorrowSelected();
     const { completed, total } = getDailyTaskStatsForDate(selected);
-    pageTitle.textContent = isToday ? '今日任务' : '任务记录';
+    pageTitle.textContent = isToday ? '今日任务' : isTomorrow ? '明日任务' : '任务记录';
     pageSubtitle.textContent = total === 0
-      ? (isToday ? '规划好今天要做的事' : formatDateLabel(selected))
-      : `${isToday ? '今天' : formatDateLabel(selected)} · 已完成 ${completed} / ${total}`;
+      ? (isToday ? '规划好今天要做的事' : isTomorrow ? '提前规划明天的任务' : formatDateLabel(selected))
+      : `${isToday ? '今天' : isTomorrow ? '明天' : formatDateLabel(selected)} · 已完成 ${completed} / ${total}`;
     pageSubtitle.hidden = false;
     return;
   }
@@ -2104,8 +2129,10 @@ function renderDailyCalendar() {
   const daysInMonth = new Date(year, month, 0).getDate();
   const startWeekday = firstDay.getDay();
   const today = todayStr();
+  const tomorrow = tomorrowStr();
   const selected = getSelectedDailyDate();
   const monthLabel = firstDay.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long' });
+  const maxPlanMonth = maxPlannableDateStr().slice(0, 7);
 
   const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
   const weekdayHtml = weekdays.map((d) => `<span class="calendar-weekday">${d}</span>`).join('');
@@ -2117,13 +2144,14 @@ function renderDailyCalendar() {
 
   for (let day = 1; day <= daysInMonth; day += 1) {
     const dateStr = dateStrFromParts(year, month, day);
-    const isFuture = dateStr > today;
+    const isFuture = isBeyondPlannableDate(dateStr);
     const status = getDailyTaskDayStatus(dateStr);
     const hasGym = isGymDay(dateStr);
     const classes = [
       'calendar-day',
       dateStr === selected ? 'selected' : '',
       dateStr === today ? 'today' : '',
+      dateStr === tomorrow ? 'tomorrow' : '',
       status !== 'none' ? 'has-tasks' : '',
       status === 'done' ? 'all-done' : '',
       status === 'partial' ? 'partial' : '',
@@ -2153,7 +2181,7 @@ function renderDailyCalendar() {
       <div class="calendar-nav">
         <button type="button" class="icon-btn calendar-prev-btn" aria-label="上个月">‹</button>
         <span class="calendar-month-label">${monthLabel}</span>
-        <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= today.slice(0, 7) ? 'disabled' : ''}>›</button>
+        <button type="button" class="icon-btn calendar-next-btn" aria-label="下个月" ${state.calendarMonth >= maxPlanMonth ? 'disabled' : ''}>›</button>
       </div>
       <div class="calendar-weekdays">${weekdayHtml}</div>
       <div class="calendar-grid">${cells}</div>
@@ -2164,6 +2192,8 @@ function renderDailyCalendar() {
 function renderToday() {
   const selected = getSelectedDailyDate();
   const isToday = isTodaySelected();
+  const isTomorrow = isTomorrowSelected();
+  const canPlan = canPlanTasksForSelectedDate();
   const tasks = getDailyTasks(selected);
   const { completed, total } = getDailyTaskStatsForDate(selected);
   const pending = tasks.filter((t) => !isDailyTaskDone(t));
@@ -2179,7 +2209,7 @@ function renderToday() {
   const addForm = $('#today-add-form');
   const importBtn = $('#open-import-modal-btn');
 
-  if (viewTitle) viewTitle.textContent = isToday ? '今日任务' : '任务记录';
+  if (viewTitle) viewTitle.textContent = isToday ? '今日任务' : isTomorrow ? '明日任务' : '任务记录';
   if (dateLabel) dateLabel.textContent = formatDateLabel(selected);
   if (backBtn) backBtn.hidden = isToday;
   if (badge) {
@@ -2189,9 +2219,15 @@ function renderToday() {
   if (actions) actions.hidden = false;
   if (addForm) {
     const input = addForm.querySelector('input[name="title"]');
-    if (input) input.placeholder = isToday ? '写一条今天要做的任务…' : '为这一天补充一条任务…';
+    if (input) {
+      input.placeholder = isToday
+        ? '写一条今天要做的任务…'
+        : isTomorrow
+          ? '写一条明天要做的任务…'
+          : '为这一天补充一条任务…';
+    }
   }
-  if (importBtn) importBtn.hidden = !isToday;
+  if (importBtn) importBtn.hidden = !canPlan;
 
   const gymBtn = $('#toggle-gym-day-btn');
   if (gymBtn) {
@@ -2227,10 +2263,16 @@ function renderToday() {
     if (list) list.innerHTML = '';
     if (empty) {
       empty.hidden = false;
-      empty.querySelector('h3').textContent = isToday ? '今天还没有任务' : '这一天没有任务记录';
+      empty.querySelector('h3').textContent = isToday
+        ? '今天还没有任务'
+        : isTomorrow
+          ? '明天还没有任务'
+          : '这一天没有任务记录';
       empty.querySelector('p').textContent = isToday
         ? '添加任务后点 + 可分解子任务，或点击「添加今日目标」导入学习节点'
-        : '可以补充任务，或打开「任务日历」查看其他日期';
+        : isTomorrow
+          ? '可提前添加自定义任务，或从目标导入节点规划明天'
+          : '可以补充任务，或打开「任务日历」查看其他日期';
     }
     return;
   }
@@ -2670,7 +2712,7 @@ function bindEvents() {
       const [year, month] = state.calendarMonth.split('-').map(Number);
       const d = new Date(year, month, 1);
       const nextMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (nextMonth > todayStr().slice(0, 7)) return;
+      if (nextMonth > maxPlannableDateStr().slice(0, 7)) return;
       state.calendarMonth = nextMonth;
       renderDailyCalendar();
       return;
