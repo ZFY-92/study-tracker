@@ -1,4 +1,4 @@
-const APP_VERSION = '38';
+const APP_VERSION = '39';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 

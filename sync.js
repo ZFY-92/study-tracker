@@ -2,6 +2,8 @@
   const SYNC_KEY_STORAGE = 'learning-progress-sync-key';
   const SYNC_LAST_AT_KEY = 'learning-progress-sync-last-at';
   const SYNC_CODE_PREFIX = 'ST1:';
+  const SYNC_CODE_PREFIX_COMPRESSED = 'ST2:';
+  const WECHAT_TEXT_WARN_CHARS = 8000;
   const PBKDF2_SALT = new TextEncoder().encode('learning-progress-sync-v1');
 
   let callbacks = {};
@@ -140,6 +142,40 @@
     return JSON.parse(new TextDecoder().decode(decrypted));
   }
 
+  function supportsGzip() {
+    return typeof CompressionStream !== 'undefined' && typeof DecompressionStream !== 'undefined';
+  }
+
+  async function gzipText(text) {
+    const stream = new Blob([new TextEncoder().encode(text)]).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  async function gunzipText(bytes) {
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+  }
+
+  async function encryptBytes(syncKey, bytes) {
+    const key = await deriveAesKey(syncKey);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
+    return {
+      payload: bufferToBase64(encrypted),
+      iv: bufferToBase64(iv),
+    };
+  }
+
+  async function decryptBytes(syncKey, payload, ivBase64) {
+    const key = await deriveAesKey(syncKey);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: new Uint8Array(base64ToBuffer(ivBase64)) },
+      key,
+      base64ToBuffer(payload)
+    );
+    return new Uint8Array(decrypted);
+  }
+
   function entityTime(item) {
     return new Date(item?.updatedAt || item?.completedAt || item?.createdAt || 0).getTime();
   }
@@ -276,22 +312,36 @@
       .trim()
       .replace(/\s/g, '');
     if (!text) {
-      throw new Error('请粘贴同步码');
+      throw new Error('请粘贴同步码或选择同步文件');
     }
     if (/^[a-f0-9]{16,64}$/i.test(text)) {
       throw new Error(
-        '您粘贴的是「同步密钥」（32 位十六进制），不是「同步码」。\n\n请在本机依次操作：保存密钥 → 点「复制同步码」→ 粘贴以 ST1: 开头的长文本。'
+        '您粘贴的是「同步密钥」（32 位十六进制），不是「同步码」。\n\n请在本机依次操作：保存密钥 → 点「复制同步码」→ 粘贴以 ST1:/ST2: 开头的长文本，或导出 .txt 文件。'
       );
     }
-    if (!text.toUpperCase().startsWith(SYNC_CODE_PREFIX)) {
-      throw new Error('同步码应以 ST1: 开头。请点「复制同步码」获取，不要复制密钥。');
+    const upper = text.toUpperCase();
+    const st2Index = upper.indexOf(SYNC_CODE_PREFIX_COMPRESSED);
+    const st1Index = upper.indexOf(SYNC_CODE_PREFIX);
+    let prefix = '';
+    let prefixIndex = -1;
+    if (st2Index !== -1 && (st1Index === -1 || st2Index <= st1Index)) {
+      prefix = SYNC_CODE_PREFIX_COMPRESSED;
+      prefixIndex = st2Index;
+    } else if (st1Index !== -1) {
+      prefix = SYNC_CODE_PREFIX;
+      prefixIndex = st1Index;
     }
-    const prefixIndex = text.toUpperCase().indexOf(SYNC_CODE_PREFIX);
-    return `${SYNC_CODE_PREFIX}${text.slice(prefixIndex + SYNC_CODE_PREFIX.length)}`;
+    if (prefixIndex === -1) {
+      throw new Error('同步码应以 ST1: 或 ST2: 开头。请点「复制同步码」获取，不要复制密钥。');
+    }
+    return {
+      prefix,
+      text: `${prefix}${text.slice(prefixIndex + prefix.length)}`,
+    };
   }
 
-  function decodeSyncCodePayload(text) {
-    const body = text.slice(SYNC_CODE_PREFIX.length);
+  function decodeSyncCodePayload(text, prefix) {
+    const body = text.slice(prefix.length);
     if (!body) {
       throw new Error('同步码内容损坏或不完整，请重新复制');
     }
@@ -321,12 +371,59 @@
       throw new Error('应用尚未就绪，请刷新页面后重试');
     }
     const localData = callbacks.getData();
-    const encrypted = await encryptPayload(syncKey, {
+    const payload = {
       ...localData,
       syncedAt: new Date().toISOString(),
-    });
+    };
+    const json = JSON.stringify(payload);
+
+    if (supportsGzip()) {
+      const gzipped = await gzipText(json);
+      const encrypted = await encryptBytes(syncKey, gzipped);
+      const wrapper = JSON.stringify(encrypted);
+      return {
+        code: `${SYNC_CODE_PREFIX_COMPRESSED}${bufferToBase64(new TextEncoder().encode(wrapper))}`,
+        rawBytes: json.length,
+        compressed: true,
+      };
+    }
+
+    const encrypted = await encryptPayload(syncKey, payload);
     const payloadJson = JSON.stringify(encrypted);
-    return `${SYNC_CODE_PREFIX}${bufferToBase64(new TextEncoder().encode(payloadJson))}`;
+    return {
+      code: `${SYNC_CODE_PREFIX}${bufferToBase64(new TextEncoder().encode(payloadJson))}`,
+      rawBytes: json.length,
+      compressed: false,
+    };
+  }
+
+  function formatCodeSize(length) {
+    if (length < 1024) return `${length} 字符`;
+    return `${(length / 1024).toFixed(1)} KB（${length} 字符）`;
+  }
+
+  function buildCodeSizeHint(result) {
+    const { code, rawBytes, compressed } = result;
+    const parts = [`同步码长度：${formatCodeSize(code.length)}`];
+    if (compressed) {
+      parts.push(`已压缩（原始数据约 ${formatCodeSize(rawBytes)}）`);
+    }
+    if (code.length > WECHAT_TEXT_WARN_CHARS) {
+      parts.push('较长，建议点「导出文件」经微信文件传输助手发送');
+    }
+    return parts.join(' · ');
+  }
+
+  function downloadSyncCodeFile(code) {
+    const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `study-sync-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   }
 
   async function copyFromTextarea(textarea) {
@@ -385,15 +482,16 @@
     if (el) el.textContent = message || '';
   }
 
-  function openSyncCodeModal(code) {
+  function openSyncCodeModal(result) {
     const modal = document.getElementById('syncCodeModal');
     const textarea = document.getElementById('syncCodeExportText');
     if (!modal || !textarea) {
       alert('同步码弹窗加载失败，请刷新页面后重试');
       return;
     }
+    const code = typeof result === 'string' ? result : result.code;
     textarea.value = code;
-    setSyncCodeStatus('');
+    setSyncCodeStatus(typeof result === 'string' ? '' : buildCodeSizeHint(result));
     showDialog(modal);
     requestAnimationFrame(() => {
       textarea.focus();
@@ -408,11 +506,22 @@
   async function shareSyncCode(text) {
     if (!navigator.share) return false;
     try {
-      await navigator.share({
-        title: '学习进度同步码',
-        text,
-      });
-      return true;
+      const file = new File([text], 'study-sync.txt', { type: 'text/plain' });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: '学习进度同步码',
+          files: [file],
+        });
+        return true;
+      }
+      if (text.length <= WECHAT_TEXT_WARN_CHARS) {
+        await navigator.share({
+          title: '学习进度同步码',
+          text,
+        });
+        return true;
+      }
+      return false;
     } catch (err) {
       if (err?.name === 'AbortError') return true;
       return false;
@@ -451,18 +560,22 @@
     }
 
     try {
-      const code = await buildSyncCode(syncKey);
-      openSyncCodeModal(code);
-      setSyncCodeStatus('请点「复制」或「分享到微信」发送完整同步码');
+      const result = await buildSyncCode(syncKey);
+      openSyncCodeModal(result);
+      const hint =
+        result.code.length > WECHAT_TEXT_WARN_CHARS
+          ? '同步码较长，建议优先点「导出文件」发送到微信文件传输助手'
+          : '请点「复制」或「导出文件」发送到另一台设备';
+      setSyncCodeStatus(`${buildCodeSizeHint(result)}。${hint}`);
     } catch (err) {
       alert(err.message || '生成同步码失败');
     }
   }
 
   async function importSyncCode(rawText) {
-    const text = normalizeSyncCodeInput(rawText);
+    const { prefix, text } = normalizeSyncCodeInput(rawText);
     const syncKey = requireSavedSyncKey();
-    const encrypted = decodeSyncCodePayload(text);
+    const encrypted = decodeSyncCodePayload(text, prefix);
 
     if (!encrypted?.payload || !encrypted?.iv) {
       throw new Error('同步码内容无效，请重新复制');
@@ -470,9 +583,14 @@
 
     let remoteData;
     try {
-      remoteData = await decryptPayload(syncKey, encrypted.payload, encrypted.iv);
+      if (prefix === SYNC_CODE_PREFIX_COMPRESSED) {
+        const bytes = await decryptBytes(syncKey, encrypted.payload, encrypted.iv);
+        remoteData = JSON.parse(await gunzipText(bytes));
+      } else {
+        remoteData = await decryptPayload(syncKey, encrypted.payload, encrypted.iv);
+      }
     } catch {
-      throw new Error('解密失败，请确认两台设备使用了相同的同步密钥');
+      throw new Error('解密失败，请确认两台设备使用了相同的同步密钥，且同步码完整未截断');
     }
 
     const localData = callbacks.getData ? callbacks.getData() : {};
@@ -565,7 +683,17 @@
       const text = document.getElementById('syncCodeExportText')?.value;
       if (!text) return;
       const ok = await shareSyncCode(text);
-      setSyncCodeStatus(ok ? '已打开分享，请发送到微信文件传输助手' : '当前浏览器不支持分享，请点「复制」');
+      setSyncCodeStatus(
+        ok
+          ? '已打开分享，请发送到微信文件传输助手'
+          : '文本过长或当前浏览器不支持分享，请点「导出文件」或「复制」'
+      );
+    });
+    document.getElementById('btnExportSyncFile')?.addEventListener('click', () => {
+      const text = document.getElementById('syncCodeExportText')?.value;
+      if (!text) return;
+      downloadSyncCodeFile(text);
+      setSyncCodeStatus('已下载 .txt 文件，可用微信「文件传输助手」发送');
     });
     document.getElementById('btnCloseSyncCode')?.addEventListener('click', closeSyncCodeModal);
     document.getElementById('btnCloseSyncCodeFooter')?.addEventListener('click', closeSyncCodeModal);
@@ -576,9 +704,27 @@
       const input = document.getElementById('syncKeyInput');
       try {
         saveSyncKey(input?.value);
-        alert('密钥已保存。\n\n下一步：点「复制同步码」导出数据（以 ST1: 开头的长文本）。');
+        alert('密钥已保存。\n\n下一步：点「复制同步码」导出数据（以 ST2: 或 ST1: 开头的长文本）。');
       } catch (err) {
         alert(err.message);
+      }
+    });
+    document.getElementById('btnImportSyncFile')?.addEventListener('click', () => {
+      document.getElementById('syncFileInput')?.click();
+    });
+    document.getElementById('syncFileInput')?.addEventListener('change', async (event) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const summary = await importSyncCode(text);
+        alert(
+          `同步成功！\n\n目标 ${summary.goals} 个\n每日任务 ${summary.dailyTasks} 条\n作息记录 ${summary.sleepDays} 天\n健身打卡 ${summary.gymDays} 天`
+        );
+        closePasteModal();
+      } catch (err) {
+        alert(`导入失败：${err.message}\n\n请确认文件完整，且密钥与导出时一致。`);
       }
     });
     document.getElementById('btnClosePasteSync')?.addEventListener('click', closePasteModal);

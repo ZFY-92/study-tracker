@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=38" />
+    <link rel="stylesheet" href="styles.css?v=39" />
     <title>学习进度</title>
   </head>
   <body>
@@ -256,7 +256,7 @@
                 <span class="profile-card-icon" aria-hidden="true">🔑</span>
                 <div>
                   <h3>多设备同步</h3>
-                  <p class="profile-desc">两台设备设相同密钥，用同步码传输数据（ST1: 开头）</p>
+                  <p class="profile-desc">两台设备设相同密钥，用同步码或文件传输数据</p>
                 </div>
               </div>
               <div class="profile-version-row">
@@ -414,7 +414,7 @@
           <button type="button" class="icon-btn" id="btnCloseSyncCode" aria-label="关闭">✕</button>
         </div>
         <div class="sync-modal-body">
-          <p class="sync-hint">同步码是以 <strong>ST1:</strong> 开头的长文本。手机请点「复制」或「分享到微信」，不要从弹窗里截取部分文字。</p>
+          <p class="sync-hint">同步码以 <strong>ST2:</strong>（压缩）或 <strong>ST1:</strong> 开头。数据较多时会自动压缩；若仍太长，请用「导出文件」经微信文件传输助手发送。</p>
           <p class="sync-hint sync-hint-status" id="syncCodeCopyStatus"></p>
           <label class="field full">
             <span>完整同步码</span>
@@ -424,7 +424,8 @@
         <div class="modal-footer">
           <div class="modal-footer-right">
             <button type="button" class="btn btn-ghost" id="btnCloseSyncCodeFooter">关闭</button>
-            <button type="button" class="btn btn-ghost" id="btnShareSyncCode">分享到微信</button>
+            <button type="button" class="btn btn-ghost" id="btnExportSyncFile">导出文件</button>
+            <button type="button" class="btn btn-ghost" id="btnShareSyncCode">分享</button>
             <button type="button" class="btn btn-primary" id="btnCopySyncCodeConfirm">复制</button>
           </div>
         </div>
@@ -438,25 +439,27 @@
           <button type="button" class="icon-btn" id="btnClosePasteSync" aria-label="关闭">✕</button>
         </div>
         <div class="sync-modal-body">
-          <p class="sync-hint">粘贴从另一台设备「复制同步码」得到的内容（<strong>以 ST1: 开头</strong>的长文本）。</p>
-          <p class="sync-hint sync-hint-warn">不要粘贴 32 位密钥。密钥请在「同步密钥」里单独保存。</p>
+          <p class="sync-hint">粘贴同步码（<strong>ST2:</strong> 或 <strong>ST1:</strong> 开头），或从 .txt 文件导入。</p>
+          <p class="sync-hint sync-hint-warn">不要粘贴 32 位密钥。微信发送长文本可能被截断，请优先用「从文件导入」。</p>
           <label class="field full">
-            <span>同步码（ST1:…）</span>
-            <textarea id="pasteSyncInput" rows="6" placeholder="ST1:eyJwYXlsb2FkIjoiLi4uIiwiaXYiOiIuLi4ifQ==" spellcheck="false"></textarea>
+            <span>同步码（ST2:… / ST1:…）</span>
+            <textarea id="pasteSyncInput" rows="6" placeholder="ST2:… 或 ST1:…" spellcheck="false"></textarea>
           </label>
         </div>
         <div class="modal-footer">
           <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="btnImportSyncFile">从文件导入</button>
             <button type="button" class="btn btn-ghost" id="btnCancelPasteSync">取消</button>
             <button type="button" class="btn btn-primary" id="btnConfirmPasteSync">导入并合并</button>
           </div>
         </div>
       </div>
     </dialog>
+    <input type="file" id="syncFileInput" accept=".txt,text/plain" hidden />
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="sync.js?v=38"></script>
-    <script src="app.js?v=38" type="module"></script>
+    <script src="sync.js?v=39"></script>
+    <script src="app.js?v=39" type="module"></script>
   </body>
 </html>
