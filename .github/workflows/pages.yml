@@ -30,15 +30,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: |
-            index.html
-            app.js
-            sync.js
-            styles.css
-            sw.js
-            manifest.json
-            icons
-            .nojekyll
+          path: .
 
       - name: Deploy to GitHub Pages
         id: deployment
