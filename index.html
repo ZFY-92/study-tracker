@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=39" />
+    <link rel="stylesheet" href="styles.css?v=40" />
     <title>学习进度</title>
   </head>
   <body>
@@ -256,7 +256,7 @@
                 <span class="profile-card-icon" aria-hidden="true">🔑</span>
                 <div>
                   <h3>多设备同步</h3>
-                  <p class="profile-desc">两台设备设相同密钥，用同步码或文件传输数据</p>
+                  <p class="profile-desc">相同密钥可自动云端同步，也可用同步码 / 文件手动传输</p>
                 </div>
               </div>
               <div class="profile-version-row">
@@ -269,6 +269,7 @@
               </div>
               <div class="profile-actions">
                 <button type="button" class="btn btn-primary btn-sm" id="btnSyncSetup">同步密钥</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnSyncNow" hidden>立即同步</button>
                 <button type="button" class="btn btn-ghost btn-sm" id="btnCopySyncCode" hidden>复制同步码</button>
                 <button type="button" class="btn btn-ghost btn-sm" id="btnPasteSyncCode">粘贴同步码</button>
               </div>
@@ -384,8 +385,8 @@
           <button type="button" class="icon-btn" id="btnCloseSync" aria-label="关闭">✕</button>
         </div>
         <div class="sync-modal-body">
-          <p class="sync-hint"><strong>密钥</strong>用于加密（32 位左右），<strong>同步码</strong>用于传输数据（以 ST1: 开头的长文本）。两者不同。</p>
-          <p class="sync-hint">步骤：生成密钥 → 保存 → 复制同步码 → 另一台保存相同密钥 → 粘贴同步码</p>
+          <p class="sync-hint"><strong>密钥</strong>用于加密，<strong>同步码</strong>用于手动传输。两台设备设相同密钥后，可点「开启自动同步」。</p>
+          <p class="sync-hint">手动同步：保存密钥 → 复制同步码 / 导出文件 → 另一台粘贴或导入</p>
           <label class="field full">
             <span>同步密钥</span>
             <div class="sync-key-row">
@@ -399,8 +400,10 @@
           </div>
         </div>
         <div class="modal-footer">
+          <button type="button" class="btn btn-ghost btn-sm" id="btnDisableCloud" hidden>关闭自动同步</button>
           <div class="modal-footer-right">
             <button type="button" class="btn btn-ghost" id="btnCancelSync">取消</button>
+            <button type="button" class="btn btn-ghost" id="btnEnableCloud" hidden>开启自动同步</button>
             <button type="button" class="btn btn-primary" id="btnSaveSyncKey">保存密钥</button>
           </div>
         </div>
@@ -459,7 +462,8 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="sync.js?v=39"></script>
-    <script src="app.js?v=39" type="module"></script>
+    <script src="supabase-config.js?v=40"></script>
+    <script src="sync.js?v=40"></script>
+    <script src="app.js?v=40" type="module"></script>
   </body>
 </html>

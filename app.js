@@ -1,4 +1,4 @@
-const APP_VERSION = '39';
+const APP_VERSION = '40';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -253,6 +253,9 @@ function saveData() {
       lastRolloverDate: state.lastRolloverDate,
     })
   );
+  if (window.StudySync?.schedulePush) {
+    window.StudySync.schedulePush();
+  }
 }
 
 function getSyncData() {
@@ -3286,6 +3289,7 @@ function init() {
       getData: getSyncData,
       applyData: applySyncData,
     });
+    window.StudySync.syncOnLaunch();
   }
   render();
 }

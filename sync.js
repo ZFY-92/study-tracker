@@ -1,13 +1,29 @@
 (function () {
   const SYNC_KEY_STORAGE = 'learning-progress-sync-key';
+  const SYNC_CLOUD_ENABLED_KEY = 'learning-progress-sync-cloud-enabled';
   const SYNC_LAST_AT_KEY = 'learning-progress-sync-last-at';
   const SYNC_CODE_PREFIX = 'ST1:';
   const SYNC_CODE_PREFIX_COMPRESSED = 'ST2:';
   const WECHAT_TEXT_WARN_CHARS = 8000;
+  const TABLE_NAME = 'sync_vault';
   const PBKDF2_SALT = new TextEncoder().encode('learning-progress-sync-v1');
+  const PUSH_DEBOUNCE_MS = 800;
 
+  let supabaseClient = null;
   let callbacks = {};
+  let pushTimer = null;
+  let syncing = false;
+  let status = 'disabled';
   let uiBound = false;
+
+  function isCloudConfigured() {
+    const cfg = window.SUPABASE_CONFIG;
+    return !!(cfg && cfg.url && cfg.anonKey);
+  }
+
+  function isCloudEnabled() {
+    return localStorage.getItem(SYNC_CLOUD_ENABLED_KEY) === '1' && !!getSyncKey() && isCloudConfigured();
+  }
 
   function hasSyncKey() {
     return !!getSyncKey();
@@ -25,7 +41,24 @@
     localStorage.setItem(SYNC_LAST_AT_KEY, iso);
   }
 
-  function getStatusLabel() {
+  function setStatus(next) {
+    status = next;
+    updateSettingsUI();
+  }
+
+  function getStatusLabel(state = status) {
+    if (isCloudEnabled()) {
+      switch (state) {
+        case 'syncing':
+          return '同步中…';
+        case 'error':
+          return '同步失败';
+        case 'ok':
+          return formatLastSyncLabel(getLastSyncAt()) || '已同步';
+        default:
+          return '自动同步已开启';
+      }
+    }
     if (hasSyncKey()) {
       return formatLastSyncLabel(getLastSyncAt()) || '已设密钥';
     }
@@ -74,6 +107,35 @@
     modal.removeAttribute('open');
   }
 
+  async function loadSupabaseClient() {
+    if (!isCloudConfigured()) return null;
+    if (supabaseClient) return supabaseClient;
+
+    if (typeof supabase !== 'undefined') {
+      supabaseClient = supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+      return supabaseClient;
+    }
+
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('Supabase SDK 加载失败'));
+      document.head.appendChild(script);
+    });
+
+    if (typeof supabase === 'undefined') return null;
+    supabaseClient = supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+    return supabaseClient;
+  }
+
+  function initCloudClient() {
+    if (!isCloudConfigured()) return false;
+    if (supabaseClient) return true;
+    loadSupabaseClient().catch(() => {});
+    return false;
+  }
+
   function validateSyncKey(raw) {
     const key = String(raw || '').trim();
     if (key.length < 8) {
@@ -85,6 +147,11 @@
   function generateSyncKey() {
     const bytes = crypto.getRandomValues(new Uint8Array(16));
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function hashSyncKey(syncKey) {
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(syncKey.trim()));
+    return Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   function bufferToBase64(buffer) {
@@ -297,6 +364,148 @@
     const sleepDays = Object.keys(data.sleepRecords || {}).length;
     const gymDays = Object.keys(data.gymDays || {}).length;
     return { goals, dailyTasks, sleepDays, gymDays };
+  }
+
+  function getErrorMessage(err) {
+    if (!err) return '同步失败';
+    if (typeof err.message === 'string' && err.message) return err.message;
+    return '同步失败';
+  }
+
+  function hasDataChanged(localData, merged) {
+    return (
+      JSON.stringify(localData.goals || []) !== JSON.stringify(merged.goals || []) ||
+      JSON.stringify(localData.dailyTasks || {}) !== JSON.stringify(merged.dailyTasks || {}) ||
+      JSON.stringify(localData.sleepRecords || {}) !== JSON.stringify(merged.sleepRecords || {}) ||
+      JSON.stringify(localData.gymDays || {}) !== JSON.stringify(merged.gymDays || {}) ||
+      localData.pinnedGoalId !== merged.pinnedGoalId ||
+      localData.gymReminderDays !== merged.gymReminderDays ||
+      localData.carryOverDailyTasks !== merged.carryOverDailyTasks ||
+      localData.lastRolloverDate !== merged.lastRolloverDate
+    );
+  }
+
+  function buildCloudPayload(localData) {
+    return {
+      goals: localData.goals || [],
+      pinnedGoalId: localData.pinnedGoalId || null,
+      dailyTasks: localData.dailyTasks || {},
+      sleepRecords: localData.sleepRecords || {},
+      gymDays: localData.gymDays || {},
+      gymReminderDays: localData.gymReminderDays ?? 2,
+      carryOverDailyTasks: localData.carryOverDailyTasks !== false,
+      lastRolloverDate: localData.lastRolloverDate || '',
+      syncedAt: new Date().toISOString(),
+    };
+  }
+
+  async function pullRemote(syncKey) {
+    const vaultId = await hashSyncKey(syncKey);
+    const { data, error } = await supabaseClient
+      .from(TABLE_NAME)
+      .select('payload, iv')
+      .eq('vault_id', vaultId)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.payload || !data?.iv) return null;
+    return decryptPayload(syncKey, data.payload, data.iv);
+  }
+
+  async function pushRemote(syncKey, payload) {
+    const vaultId = await hashSyncKey(syncKey);
+    const encrypted = await encryptPayload(syncKey, payload);
+    const { error } = await supabaseClient.from(TABLE_NAME).upsert({
+      vault_id: vaultId,
+      payload: encrypted.payload,
+      iv: encrypted.iv,
+      client_updated_at: payload.syncedAt,
+    });
+    if (error) throw error;
+    setLastSyncAt(new Date().toISOString());
+  }
+
+  async function runCloudSync({ forcePush = false } = {}) {
+    if (!isCloudEnabled() || syncing) return { changed: false };
+
+    syncing = true;
+    setStatus('syncing');
+
+    try {
+      const client = await loadSupabaseClient();
+      if (!client) {
+        setStatus('error');
+        return { changed: false, error: '未配置 Supabase' };
+      }
+      supabaseClient = client;
+      const syncKey = getSyncKey();
+      const localData = callbacks.getData ? callbacks.getData() : {};
+      const remoteData = await pullRemote(syncKey);
+
+      if (!remoteData) {
+        const payload = buildCloudPayload(localData);
+        await pushRemote(syncKey, payload);
+        setStatus('ok');
+        return { changed: false };
+      }
+
+      const merged = mergePayload(localData, remoteData);
+      const changed = hasDataChanged(localData, merged);
+
+      if (changed && callbacks.applyData) callbacks.applyData(merged);
+      if (changed || forcePush) await pushRemote(syncKey, merged);
+      else setLastSyncAt(new Date().toISOString());
+
+      setStatus('ok');
+      return { changed };
+    } catch (err) {
+      console.error('Cloud sync failed:', err);
+      setStatus('error');
+      return { changed: false, error: getErrorMessage(err) };
+    } finally {
+      syncing = false;
+    }
+  }
+
+  function schedulePush() {
+    if (!isCloudEnabled()) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => runCloudSync({ forcePush: true }), PUSH_DEBOUNCE_MS);
+  }
+
+  async function enableCloudSync() {
+    if (!hasSyncKey()) {
+      alert('请先填写并保存同步密钥');
+      return false;
+    }
+    if (!isCloudConfigured()) {
+      alert('尚未配置 Supabase 云端，请联系部署者填写 supabase-config.js。');
+      return false;
+    }
+
+    try {
+      const client = await loadSupabaseClient();
+      if (!client) throw new Error('SDK 加载失败');
+      supabaseClient = client;
+    } catch {
+      alert('Supabase 初始化失败，请检查配置。');
+      return false;
+    }
+
+    localStorage.setItem(SYNC_CLOUD_ENABLED_KEY, '1');
+    const result = await runCloudSync({ forcePush: true });
+    if (result.error) {
+      localStorage.removeItem(SYNC_CLOUD_ENABLED_KEY);
+      alert(`开启自动同步失败：${result.error}`);
+      return false;
+    }
+    updateSettingsUI();
+    return true;
+  }
+
+  function disableCloudSync() {
+    localStorage.removeItem(SYNC_CLOUD_ENABLED_KEY);
+    setStatus('disabled');
+    updateSettingsUI();
   }
 
   function saveSyncKey(rawKey) {
@@ -599,17 +808,24 @@
     if (callbacks.applyData) callbacks.applyData(merged);
     setLastSyncAt(merged.syncedAt);
     updateSettingsUI();
+    if (isCloudEnabled()) schedulePush();
     return summarizeData(merged);
   }
 
   function updateSettingsUI() {
     const statusEl = document.getElementById('syncStatus');
     const keyEl = document.getElementById('syncKeyPreview');
+    const btnSyncNow = document.getElementById('btnSyncNow');
+    const btnDisableCloud = document.getElementById('btnDisableCloud');
+    const btnEnableCloud = document.getElementById('btnEnableCloud');
     const btnCopyCode = document.getElementById('btnCopySyncCode');
     const btnPasteCode = document.getElementById('btnPasteSyncCode');
 
     if (statusEl) statusEl.textContent = getStatusLabel();
     if (keyEl) keyEl.textContent = hasSyncKey() ? maskSyncKey(getSyncKey()) : '未设置';
+    if (btnSyncNow) btnSyncNow.hidden = !isCloudEnabled();
+    if (btnDisableCloud) btnDisableCloud.hidden = !isCloudEnabled();
+    if (btnEnableCloud) btnEnableCloud.hidden = !hasSyncKey() || isCloudEnabled() || !isCloudConfigured();
     if (btnCopyCode) btnCopyCode.hidden = !hasSyncKey();
     if (btnPasteCode) btnPasteCode.hidden = false;
 
@@ -664,6 +880,10 @@
     uiBound = true;
 
     document.getElementById('btnSyncSetup')?.addEventListener('click', openSyncModal);
+    document.getElementById('btnSyncNow')?.addEventListener('click', async () => {
+      const result = await runCloudSync({ forcePush: true });
+      alert(result.error ? `同步失败：${result.error}` : '同步完成');
+    });
     document.getElementById('btnCopySyncCode')?.addEventListener('click', exportSyncCode);
     document.getElementById('btnPasteSyncCode')?.addEventListener('click', openPasteModal);
     document.getElementById('btnCloseSync')?.addEventListener('click', closeSyncModal);
@@ -704,9 +924,31 @@
       const input = document.getElementById('syncKeyInput');
       try {
         saveSyncKey(input?.value);
-        alert('密钥已保存。\n\n下一步：点「复制同步码」导出数据（以 ST2: 或 ST1: 开头的长文本）。');
+        alert('密钥已保存。\n\n可开启「自动同步」，或使用「复制同步码」手动传输。');
       } catch (err) {
         alert(err.message);
+      }
+    });
+    document.getElementById('btnEnableCloud')?.addEventListener('click', async () => {
+      const input = document.getElementById('syncKeyInput');
+      if (input?.value.trim()) {
+        try {
+          saveSyncKey(input.value);
+        } catch (err) {
+          alert(err.message);
+          return;
+        }
+      }
+      const ok = await enableCloudSync();
+      if (ok) {
+        alert('自动同步已开启！');
+        closeSyncModal();
+      }
+    });
+    document.getElementById('btnDisableCloud')?.addEventListener('click', () => {
+      if (confirm('关闭后不再自动同步，云端数据仍保留。确定吗？')) {
+        disableCloudSync();
+        closeSyncModal();
       }
     });
     document.getElementById('btnImportSyncFile')?.addEventListener('click', () => {
@@ -747,6 +989,10 @@
     document.getElementById('pasteSyncModal')?.addEventListener('click', (e) => {
       if (e.target.id === 'pasteSyncModal') closePasteModal();
     });
+
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && isCloudEnabled()) runCloudSync();
+    });
   }
 
   function bootSyncUI() {
@@ -758,8 +1004,18 @@
     init(options = {}) {
       callbacks = { ...callbacks, ...options };
       bootSyncUI();
+      initCloudClient();
+      setStatus(isCloudEnabled() ? 'ok' : 'disabled');
     },
+    isConfigured: isCloudConfigured,
+    isEnabled: isCloudEnabled,
     getStatusLabel,
+    schedulePush,
+    syncOnLaunch() {
+      if (!isCloudEnabled()) return Promise.resolve({ changed: false });
+      return runCloudSync();
+    },
+    syncNow: () => runCloudSync({ forcePush: true }),
     updateSettingsUI,
     openSyncModal,
     openPasteModal,
