@@ -1,4 +1,4 @@
-const APP_VERSION = '37';
+const APP_VERSION = '38';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -253,6 +253,37 @@ function saveData() {
       lastRolloverDate: state.lastRolloverDate,
     })
   );
+}
+
+function getSyncData() {
+  return {
+    goals: JSON.parse(JSON.stringify(state.goals)),
+    pinnedGoalId: state.pinnedGoalId,
+    dailyTasks: JSON.parse(JSON.stringify(state.dailyTasks)),
+    sleepRecords: JSON.parse(JSON.stringify(state.sleepRecords)),
+    gymDays: { ...state.gymDays },
+    gymReminderDays: state.gymReminderDays,
+    carryOverDailyTasks: state.carryOverDailyTasks,
+    lastRolloverDate: state.lastRolloverDate,
+    syncedAt: localStorage.getItem('learning-progress-sync-last-at') || '',
+  };
+}
+
+function applySyncData(data) {
+  state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
+  state.pinnedGoalId = data.pinnedGoalId || null;
+  state.dailyTasks = migrateDailyTasks(data.dailyTasks);
+  state.sleepRecords = migrateSleepRecords(data.sleepRecords);
+  state.gymDays = migrateGymDays(data.gymDays);
+  state.gymReminderDays = normalizeGymReminderDays(data.gymReminderDays);
+  state.carryOverDailyTasks = data.carryOverDailyTasks !== false;
+  state.lastRolloverDate = data.lastRolloverDate || '';
+  syncSelectedDailyDate();
+  if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
+    state.pinnedGoalId = null;
+  }
+  saveData();
+  render();
 }
 
 function syncSelectedDailyDate() {
@@ -2374,6 +2405,10 @@ function renderProfile() {
 
   const gymDaysInput = $('#gym-reminder-days-input');
   if (gymDaysInput) gymDaysInput.value = String(state.gymReminderDays);
+
+  if (window.StudySync?.updateSettingsUI) {
+    window.StudySync.updateSettingsUI();
+  }
 }
 
 function render() {
@@ -3246,6 +3281,12 @@ function init() {
   rolloverIncompleteDailyTasks();
   bindEvents();
   setupPWA();
+  if (window.StudySync) {
+    window.StudySync.init({
+      getData: getSyncData,
+      applyData: applySyncData,
+    });
+  }
   render();
 }
 

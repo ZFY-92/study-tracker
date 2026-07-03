@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=37" />
+    <link rel="stylesheet" href="styles.css?v=38" />
     <title>学习进度</title>
   </head>
   <body>
@@ -253,6 +253,28 @@
             </article>
             <article class="profile-card">
               <div class="profile-card-head">
+                <span class="profile-card-icon" aria-hidden="true">🔑</span>
+                <div>
+                  <h3>多设备同步</h3>
+                  <p class="profile-desc">两台设备设相同密钥，用同步码传输数据（ST1: 开头）</p>
+                </div>
+              </div>
+              <div class="profile-version-row">
+                <span class="profile-version-label">同步状态</span>
+                <span class="profile-version" id="syncStatus">未设置</span>
+              </div>
+              <div class="profile-version-row">
+                <span class="profile-version-label">当前密钥</span>
+                <span class="profile-sync-key" id="syncKeyPreview">未设置</span>
+              </div>
+              <div class="profile-actions">
+                <button type="button" class="btn btn-primary btn-sm" id="btnSyncSetup">同步密钥</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnCopySyncCode" hidden>复制同步码</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnPasteSyncCode">粘贴同步码</button>
+              </div>
+            </article>
+            <article class="profile-card">
+              <div class="profile-card-head">
                 <span class="profile-card-icon" aria-hidden="true">📲</span>
                 <div>
                   <h3>安装应用</h3>
@@ -354,8 +376,87 @@
       </div>
     </div>
 
+    <!-- 同步密钥 -->
+    <dialog class="modal" id="syncModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>同步密钥</h3>
+          <button type="button" class="icon-btn" id="btnCloseSync" aria-label="关闭">✕</button>
+        </div>
+        <div class="sync-modal-body">
+          <p class="sync-hint"><strong>密钥</strong>用于加密（32 位左右），<strong>同步码</strong>用于传输数据（以 ST1: 开头的长文本）。两者不同。</p>
+          <p class="sync-hint">步骤：生成密钥 → 保存 → 复制同步码 → 另一台保存相同密钥 → 粘贴同步码</p>
+          <label class="field full">
+            <span>同步密钥</span>
+            <div class="sync-key-row">
+              <input type="text" id="syncKeyInput" placeholder="至少 8 位，建议点「生成密钥」" autocomplete="off" spellcheck="false" />
+              <button type="button" class="btn btn-ghost btn-sm" id="btnGenerateSyncKey">生成密钥</button>
+            </div>
+          </label>
+          <div class="sync-key-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnCopySyncKey">复制密钥</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnCopySyncCodeInModal">复制同步码</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="btnCancelSync">取消</button>
+            <button type="button" class="btn btn-primary" id="btnSaveSyncKey">保存密钥</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal" id="syncCodeModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>同步码</h3>
+          <button type="button" class="icon-btn" id="btnCloseSyncCode" aria-label="关闭">✕</button>
+        </div>
+        <div class="sync-modal-body">
+          <p class="sync-hint">同步码是以 <strong>ST1:</strong> 开头的长文本。手机请点「复制」或「分享到微信」，不要从弹窗里截取部分文字。</p>
+          <p class="sync-hint sync-hint-status" id="syncCodeCopyStatus"></p>
+          <label class="field full">
+            <span>完整同步码</span>
+            <textarea id="syncCodeExportText" rows="8" readonly spellcheck="false"></textarea>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="btnCloseSyncCodeFooter">关闭</button>
+            <button type="button" class="btn btn-ghost" id="btnShareSyncCode">分享到微信</button>
+            <button type="button" class="btn btn-primary" id="btnCopySyncCodeConfirm">复制</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal" id="pasteSyncModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>粘贴同步码</h3>
+          <button type="button" class="icon-btn" id="btnClosePasteSync" aria-label="关闭">✕</button>
+        </div>
+        <div class="sync-modal-body">
+          <p class="sync-hint">粘贴从另一台设备「复制同步码」得到的内容（<strong>以 ST1: 开头</strong>的长文本）。</p>
+          <p class="sync-hint sync-hint-warn">不要粘贴 32 位密钥。密钥请在「同步密钥」里单独保存。</p>
+          <label class="field full">
+            <span>同步码（ST1:…）</span>
+            <textarea id="pasteSyncInput" rows="6" placeholder="ST1:eyJwYXlsb2FkIjoiLi4uIiwiaXYiOiIuLi4ifQ==" spellcheck="false"></textarea>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <div class="modal-footer-right">
+            <button type="button" class="btn btn-ghost" id="btnCancelPasteSync">取消</button>
+            <button type="button" class="btn btn-primary" id="btnConfirmPasteSync">导入并合并</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="app.js?v=37" type="module"></script>
+    <script src="sync.js?v=38"></script>
+    <script src="app.js?v=38" type="module"></script>
   </body>
 </html>

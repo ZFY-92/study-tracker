@@ -1,9 +1,10 @@
-const APP_VERSION = '37';
+const APP_VERSION = '38';
 const CACHE_NAME = `learning-progress-v${APP_VERSION}`;
 const ASSETS = [
   './',
   './index.html',
   `./app.js?v=${APP_VERSION}`,
+  `./sync.js?v=${APP_VERSION}`,
   `./styles.css?v=${APP_VERSION}`,
   './manifest.json',
   './icons/icon.svg',
@@ -23,6 +24,9 @@ function normalizeAppShellRequest(request) {
   const url = new URL(request.url);
   if (url.pathname.endsWith('/app.js')) {
     return `./app.js?v=${APP_VERSION}`;
+  }
+  if (url.pathname.endsWith('/sync.js')) {
+    return `./sync.js?v=${APP_VERSION}`;
   }
   if (url.pathname.endsWith('/styles.css')) {
     return `./styles.css?v=${APP_VERSION}`;
