@@ -318,8 +318,48 @@
     return result;
   }
 
+  function normalizeGymEntry(value) {
+    if (value === true) return { active: true, updatedAt: '' };
+    if (!value || typeof value !== 'object') return null;
+    return {
+      active: value.active !== false,
+      updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+    };
+  }
+
+  function isActiveGymEntry(value) {
+    return !!normalizeGymEntry(value)?.active;
+  }
+
   function mergeGymDays(local, remote) {
-    return { ...(local || {}), ...(remote || {}) };
+    const result = {};
+    const dates = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
+
+    for (const date of dates) {
+      const localEntry = normalizeGymEntry(local?.[date]);
+      const remoteEntry = normalizeGymEntry(remote?.[date]);
+      if (!localEntry && !remoteEntry) continue;
+
+      if (!localEntry) {
+        if (remoteEntry?.active) result[date] = remoteEntry;
+        continue;
+      }
+      if (!remoteEntry) {
+        result[date] = localEntry;
+        continue;
+      }
+
+      const localTime = new Date(localEntry.updatedAt || 0).getTime();
+      const remoteTime = new Date(remoteEntry.updatedAt || 0).getTime();
+      const picked = remoteTime >= localTime ? remoteEntry : localEntry;
+      result[date] = picked;
+    }
+
+    return result;
+  }
+
+  function countActiveGymDays(gymDays) {
+    return Object.values(gymDays || {}).filter((entry) => isActiveGymEntry(entry)).length;
   }
 
   function pickMaxDate(a, b) {
@@ -362,7 +402,7 @@
     const goals = data.goals?.length || 0;
     const dailyTasks = Object.values(data.dailyTasks || {}).reduce((sum, tasks) => sum + (tasks?.length || 0), 0);
     const sleepDays = Object.keys(data.sleepRecords || {}).length;
-    const gymDays = Object.keys(data.gymDays || {}).length;
+    const gymDays = countActiveGymDays(data.gymDays);
     return { goals, dailyTasks, sleepDays, gymDays };
   }
 

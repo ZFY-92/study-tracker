@@ -1,4 +1,4 @@
-const APP_VERSION = '40';
+const APP_VERSION = '41';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -224,11 +224,18 @@ function migrateSleepRecords(raw) {
 
 function migrateGymDays(raw) {
   if (!raw || typeof raw !== 'object') return {};
-  /** @type {Record<string, true>} */
+  /** @type {Record<string, { active: boolean, updatedAt: string }>} */
   const result = {};
   for (const [date, value] of Object.entries(raw)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-    if (value) result[date] = true;
+    if (value === true) {
+      result[date] = { active: true, updatedAt: '' };
+    } else if (value && typeof value === 'object') {
+      result[date] = {
+        active: value.active !== false,
+        updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
+      };
+    }
   }
   return result;
 }
@@ -1081,12 +1088,15 @@ function daysBetweenDates(fromDateStr, toDateStr) {
 }
 
 function isGymDay(dateStr) {
-  return !!state.gymDays[dateStr];
+  const entry = state.gymDays[dateStr];
+  if (entry === true) return true;
+  if (entry && typeof entry === 'object') return !!entry.active;
+  return false;
 }
 
 function getLastGymDate(onOrBefore = todayStr()) {
   const dates = Object.keys(state.gymDays)
-    .filter((d) => d <= onOrBefore)
+    .filter((d) => d <= onOrBefore && isGymDay(d))
     .sort();
   return dates.length ? dates[dates.length - 1] : null;
 }
@@ -1115,12 +1125,13 @@ function getGymReminderMessage() {
 
 function toggleGymDay(date = todayStr()) {
   if (date > todayStr()) return;
-  if (state.gymDays[date]) {
-    delete state.gymDays[date];
+  const now = new Date().toISOString();
+  if (isGymDay(date)) {
+    state.gymDays[date] = { active: false, updatedAt: now };
     saveData();
     showToast('已取消健身记录');
   } else {
-    state.gymDays[date] = true;
+    state.gymDays[date] = { active: true, updatedAt: now };
     saveData();
     showToast('已记录今日健身');
   }
