@@ -1,4 +1,4 @@
-const APP_VERSION = '42';
+const APP_VERSION = '43';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -631,7 +631,7 @@ function buildSleepChartPoint({ cx, cy, color, date, value, kind }) {
   `;
 }
 
-function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel, range = 'week' }) {
+function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel, chartRange = 'week' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -657,10 +657,10 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
   const refMinutes = referenceTime ? parseTimeToMinutes(referenceTime, forBed) : null;
-  const range = finalizeChartRange(minM, maxM, refMinutes);
-  minM = range.minM;
-  maxM = range.maxM;
-  const rangeM = range.rangeM;
+  const rangeInfo = finalizeChartRange(minM, maxM, refMinutes);
+  minM = rangeInfo.minM;
+  maxM = rangeInfo.maxM;
+  const rangeM = rangeInfo.rangeM;
 
   const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
   const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
@@ -710,7 +710,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
     `;
   }).join('');
 
-  const xLabels = buildChartXLabels({ dates, toX, height, range });
+  const xLabels = buildChartXLabels({ dates, toX, height, range: chartRange });
 
   return `
     <article class="sleep-chart-card">
@@ -729,7 +729,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   `;
 }
 
-function buildSleepDurationChart({ dates, kind = 'duration', range = 'week' }) {
+function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -798,7 +798,7 @@ function buildSleepDurationChart({ dates, kind = 'duration', range = 'week' }) {
     className: 'duration',
   });
 
-  const xLabels = buildChartXLabels({ dates, toX, height, range });
+  const xLabels = buildChartXLabels({ dates, toX, height, range: chartRange });
 
   return `
     <article class="sleep-chart-card">
@@ -818,7 +818,7 @@ function buildSleepDurationChart({ dates, kind = 'duration', range = 'week' }) {
 }
 
 function renderActiveSleepChart(dates) {
-  const range = state.sleepChartRange;
+  const chartRange = state.sleepChartRange;
   switch (state.sleepChartType) {
     case 'bed':
       return buildSleepTimeChart({
@@ -830,10 +830,10 @@ function renderActiveSleepChart(dates) {
         kind: 'bed',
         referenceTime: '00:00',
         referenceLabel: '12:00',
-        range,
+        chartRange,
       });
     case 'duration':
-      return buildSleepDurationChart({ dates, range });
+      return buildSleepDurationChart({ dates, chartRange });
     default:
       return buildSleepTimeChart({
         title: '起床时间',
@@ -844,7 +844,7 @@ function renderActiveSleepChart(dates) {
         kind: 'wake',
         referenceTime: '08:30',
         referenceLabel: '8:30',
-        range,
+        chartRange,
       });
   }
 }
