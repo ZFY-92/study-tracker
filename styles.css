@@ -3104,6 +3104,25 @@ body {
   stroke-dasharray: 6 4;
 }
 
+.sleep-ref-line.average {
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: 0.4;
+}
+
+.sleep-ref-line.wake.average {
+  stroke: #f59e0b;
+}
+
+.sleep-ref-line.bed.average {
+  stroke: #6366f1;
+}
+
+.sleep-ref-line.duration.average {
+  stroke: #10b981;
+  opacity: 0.45;
+}
+
 .sleep-ref-label {
   font-size: 10px;
   font-family: inherit;
@@ -3120,6 +3139,24 @@ body {
 }
 
 .sleep-ref-label.duration {
+  fill: #059669;
+}
+
+.sleep-ref-label.average {
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 0.65;
+}
+
+.sleep-ref-label.wake.average {
+  fill: #d97706;
+}
+
+.sleep-ref-label.bed.average {
+  fill: #6366f1;
+}
+
+.sleep-ref-label.duration.average {
   fill: #059669;
 }
 
@@ -3149,6 +3186,22 @@ body {
   fill: var(--text-muted);
   font-size: 10px;
   font-family: inherit;
+}
+
+.sleep-axis-label-week {
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.sleep-axis-label-month {
+  font-size: 9px;
+}
+
+.sleep-axis-weekday {
+  fill: var(--text-muted);
+  font-size: 8px;
+  font-weight: 400;
+  opacity: 0.65;
 }
 
 .sleep-history-table-wrap {

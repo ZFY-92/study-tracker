@@ -1,4 +1,4 @@
-const APP_VERSION = '43';
+const APP_VERSION = '44';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -584,13 +584,28 @@ function formatChartXAxisLabel(date, range) {
   return dateLabel;
 }
 
+function averageMinutes(values) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
 function buildChartXLabels({ dates, toX, height, range }) {
   const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
   return dates
     .map((date, index) => {
       if (index % xStep !== 0 && index !== dates.length - 1) return '';
+      const x = toX(index);
+      if (range === 'week') {
+        const dateLabel = formatChartDateLabel(date);
+        const weekday = `周${formatWeekdayShort(date)}`;
+        return `
+          <text x="${x}" y="${height - 20}" class="sleep-axis-label sleep-axis-label-week" text-anchor="middle">
+            <tspan x="${x}" dy="0">${escapeHtml(dateLabel)}</tspan>
+            <tspan x="${x}" dy="10" class="sleep-axis-weekday">${escapeHtml(weekday)}</tspan>
+          </text>`;
+      }
       const label = formatChartXAxisLabel(date, range);
-      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${escapeHtml(label)}</text>`;
+      return `<text x="${x}" y="${height - 8}" class="sleep-axis-label sleep-axis-label-month" text-anchor="middle">${escapeHtml(label)}</text>`;
     })
     .join('');
 }
@@ -604,9 +619,11 @@ function formatChartPointDetail(date, kind, value) {
 function finalizeChartRange(minM, maxM, referenceMinutes) {
   let min = minM;
   let max = maxM;
-  if (referenceMinutes != null) {
-    if (referenceMinutes < min) min = referenceMinutes;
-    if (referenceMinutes > max) max = referenceMinutes;
+  const refs = referenceMinutes == null ? [] : Array.isArray(referenceMinutes) ? referenceMinutes : [referenceMinutes];
+  for (const ref of refs) {
+    if (ref == null) continue;
+    if (ref < min) min = ref;
+    if (ref > max) max = ref;
   }
   const span = Math.max(max - min, 60);
   min = Math.floor((min - span * 0.15) / 30) * 30;
@@ -614,11 +631,24 @@ function finalizeChartRange(minM, maxM, referenceMinutes) {
   return { minM: min, maxM: max, rangeM: Math.max(max - min, 30) };
 }
 
-function buildChartReferenceLine({ minutes, label, minM, rangeM, chartH, pad, width, className }) {
+function buildChartReferenceLine({
+  minutes,
+  label,
+  minM,
+  rangeM,
+  chartH,
+  pad,
+  width,
+  className,
+  labelAnchor = 'end',
+}) {
   const y = pad.top + chartH - ((minutes - minM) / rangeM) * chartH;
+  const labelX = labelAnchor === 'start' ? pad.left + 2 : width - pad.right - 2;
+  const labelY = labelAnchor === 'start' ? y + 12 : y - 4;
+  const anchor = labelAnchor === 'start' ? 'start' : 'end';
   return `
     <line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" class="sleep-ref-line ${className}" />
-    <text x="${width - pad.right - 2}" y="${y - 4}" class="sleep-ref-label ${className}" text-anchor="end">${escapeHtml(label)}</text>
+    <text x="${labelX}" y="${labelY}" class="sleep-ref-label ${className}" text-anchor="${anchor}">${escapeHtml(label)}</text>
   `;
 }
 
@@ -634,7 +664,7 @@ function buildSleepChartPoint({ cx, cy, color, date, value, kind }) {
 function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel, chartRange = 'week' }) {
   const width = 360;
   const height = 180;
-  const pad = { top: 16, right: 16, bottom: 32, left: 48 };
+  const pad = { top: 16, right: 16, bottom: chartRange === 'week' ? 38 : 32, left: 48 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
@@ -657,7 +687,8 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
   const refMinutes = referenceTime ? parseTimeToMinutes(referenceTime, forBed) : null;
-  const rangeInfo = finalizeChartRange(minM, maxM, refMinutes);
+  const avgMinutes = averageMinutes(minuteValues);
+  const rangeInfo = finalizeChartRange(minM, maxM, [refMinutes, avgMinutes]);
   minM = rangeInfo.minM;
   maxM = rangeInfo.maxM;
   const rangeM = rangeInfo.rangeM;
@@ -700,6 +731,21 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
         })
       : '';
 
+  const avgLine =
+    avgMinutes != null
+      ? buildChartReferenceLine({
+          minutes: avgMinutes,
+          label: `均 ${formatMinutesAsTime(avgMinutes, forBed)}`,
+          minM,
+          rangeM,
+          chartH,
+          pad,
+          width,
+          className: `${kind === 'wake' ? 'wake' : 'bed'} average`,
+          labelAnchor: 'start',
+        })
+      : '';
+
   const yTicks = 4;
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
     const mins = minM + (rangeM * i) / yTicks;
@@ -718,6 +764,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
       <div class="sleep-chart-svg-wrap">
         <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
           ${yLabels}
+          ${avgLine}
           ${refLine}
           <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           ${dots}
@@ -732,7 +779,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
 function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week' }) {
   const width = 360;
   const height = 180;
-  const pad = { top: 16, right: 16, bottom: 32, left: 48 };
+  const pad = { top: 16, right: 16, bottom: chartRange === 'week' ? 38 : 32, left: 48 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
@@ -755,7 +802,8 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
   const refMinutes = 8 * 60;
-  const rangeInfo = finalizeChartRange(minM, maxM, refMinutes);
+  const avgMinutes = averageMinutes(minuteValues);
+  const rangeInfo = finalizeChartRange(minM, maxM, [refMinutes, avgMinutes]);
   minM = rangeInfo.minM;
   maxM = rangeInfo.maxM;
   const rangeM = rangeInfo.rangeM;
@@ -798,6 +846,21 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
     className: 'duration',
   });
 
+  const avgLine =
+    avgMinutes != null
+      ? buildChartReferenceLine({
+          minutes: avgMinutes,
+          label: `均 ${formatDurationChart(avgMinutes)}`,
+          minM,
+          rangeM,
+          chartH,
+          pad,
+          width,
+          className: 'duration average',
+          labelAnchor: 'start',
+        })
+      : '';
+
   const xLabels = buildChartXLabels({ dates, toX, height, range: chartRange });
 
   return `
@@ -806,6 +869,7 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
       <div class="sleep-chart-svg-wrap">
         <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="睡眠时长">
           ${yLabels}
+          ${avgLine}
           ${refLine}
           <polyline points="${points}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           ${dots}
