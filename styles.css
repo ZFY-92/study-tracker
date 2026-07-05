@@ -3098,6 +3098,12 @@ body {
   opacity: 0.85;
 }
 
+.sleep-ref-line.duration {
+  stroke: #10b981;
+  opacity: 0.75;
+  stroke-dasharray: 6 4;
+}
+
 .sleep-ref-label {
   font-size: 10px;
   font-family: inherit;
@@ -3111,6 +3117,10 @@ body {
 
 .sleep-ref-label.bed {
   fill: #7c3aed;
+}
+
+.sleep-ref-label.duration {
+  fill: #059669;
 }
 
 .sleep-chart-point {

@@ -1,4 +1,4 @@
-const APP_VERSION = '41';
+const APP_VERSION = '42';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 
@@ -572,6 +572,29 @@ function formatChartDateLabel(date) {
   return date === todayStr() ? '今天' : date.slice(5).replace('-', '/');
 }
 
+function formatWeekdayShort(dateStr) {
+  return ['日', '一', '二', '三', '四', '五', '六'][parseDateStr(dateStr).getDay()];
+}
+
+function formatChartXAxisLabel(date, range) {
+  const dateLabel = formatChartDateLabel(date);
+  if (range === 'week') {
+    return `${dateLabel} 周${formatWeekdayShort(date)}`;
+  }
+  return dateLabel;
+}
+
+function buildChartXLabels({ dates, toX, height, range }) {
+  const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
+  return dates
+    .map((date, index) => {
+      if (index % xStep !== 0 && index !== dates.length - 1) return '';
+      const label = formatChartXAxisLabel(date, range);
+      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${escapeHtml(label)}</text>`;
+    })
+    .join('');
+}
+
 function formatChartPointDetail(date, kind, value) {
   const kinds = { wake: '起床', bed: '睡觉', duration: '睡眠时长' };
   const valueText = kind === 'duration' ? formatDuration(Number(value)) : value;
@@ -608,7 +631,7 @@ function buildSleepChartPoint({ cx, cy, color, date, value, kind }) {
   `;
 }
 
-function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel }) {
+function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel, range = 'week' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -687,14 +710,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
     `;
   }).join('');
 
-  const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
-  const xLabels = dates
-    .map((date, index) => {
-      if (index % xStep !== 0 && index !== dates.length - 1) return '';
-      const label = date.slice(5).replace('-', '/');
-      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${label}</text>`;
-    })
-    .join('');
+  const xLabels = buildChartXLabels({ dates, toX, height, range });
 
   return `
     <article class="sleep-chart-card">
@@ -713,7 +729,7 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   `;
 }
 
-function buildSleepDurationChart({ dates, kind = 'duration' }) {
+function buildSleepDurationChart({ dates, kind = 'duration', range = 'week' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: 32, left: 48 };
@@ -738,10 +754,11 @@ function buildSleepDurationChart({ dates, kind = 'duration' }) {
   const minuteValues = plotted.map((slot) => slot.minutes);
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
-  const span = Math.max(maxM - minM, 60);
-  minM = Math.max(0, Math.floor((minM - span * 0.15) / 30) * 30);
-  maxM = Math.ceil((maxM + span * 0.15) / 30) * 30;
-  const rangeM = Math.max(maxM - minM, 30);
+  const refMinutes = 8 * 60;
+  const rangeInfo = finalizeChartRange(minM, maxM, refMinutes);
+  minM = rangeInfo.minM;
+  maxM = rangeInfo.maxM;
+  const rangeM = rangeInfo.rangeM;
 
   const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
   const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
@@ -770,14 +787,18 @@ function buildSleepDurationChart({ dates, kind = 'duration' }) {
     `;
   }).join('');
 
-  const xStep = dates.length <= 7 ? 1 : Math.ceil(dates.length / 7);
-  const xLabels = dates
-    .map((date, index) => {
-      if (index % xStep !== 0 && index !== dates.length - 1) return '';
-      const label = date.slice(5).replace('-', '/');
-      return `<text x="${toX(index)}" y="${height - 8}" class="sleep-axis-label" text-anchor="middle">${label}</text>`;
-    })
-    .join('');
+  const refLine = buildChartReferenceLine({
+    minutes: refMinutes,
+    label: '8h',
+    minM,
+    rangeM,
+    chartH,
+    pad,
+    width,
+    className: 'duration',
+  });
+
+  const xLabels = buildChartXLabels({ dates, toX, height, range });
 
   return `
     <article class="sleep-chart-card">
@@ -785,6 +806,7 @@ function buildSleepDurationChart({ dates, kind = 'duration' }) {
       <div class="sleep-chart-svg-wrap">
         <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="睡眠时长">
           ${yLabels}
+          ${refLine}
           <polyline points="${points}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           ${dots}
           ${xLabels}
@@ -796,6 +818,7 @@ function buildSleepDurationChart({ dates, kind = 'duration' }) {
 }
 
 function renderActiveSleepChart(dates) {
+  const range = state.sleepChartRange;
   switch (state.sleepChartType) {
     case 'bed':
       return buildSleepTimeChart({
@@ -807,9 +830,10 @@ function renderActiveSleepChart(dates) {
         kind: 'bed',
         referenceTime: '00:00',
         referenceLabel: '12:00',
+        range,
       });
     case 'duration':
-      return buildSleepDurationChart({ dates });
+      return buildSleepDurationChart({ dates, range });
     default:
       return buildSleepTimeChart({
         title: '起床时间',
@@ -820,6 +844,7 @@ function renderActiveSleepChart(dates) {
         kind: 'wake',
         referenceTime: '08:30',
         referenceLabel: '8:30',
+        range,
       });
   }
 }
