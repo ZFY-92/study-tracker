@@ -1,4 +1,4 @@
-const APP_VERSION = '45';
+const APP_VERSION = '46';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 /** 12 点前记录的睡觉时间视为凌晨，计入前一天（与睡觉时间图表逻辑一致） */

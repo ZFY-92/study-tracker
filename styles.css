@@ -2589,6 +2589,7 @@ body {
 .sleep-panel {
   height: 100%;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -2689,7 +2690,10 @@ body {
 .sleep-history-panel-inner {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  min-width: 0;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: var(--radius);
 }
@@ -2889,10 +2893,10 @@ body {
 }
 
 .sleep-history-duration-form {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .sleep-history-duration-form .sleep-duration-h,
@@ -3208,8 +3212,21 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   box-shadow: var(--shadow);
+  max-width: 100%;
+}
+
+.sleep-history-table-wrap::-webkit-scrollbar {
+  height: 4px;
+}
+
+.sleep-history-table-wrap::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+  border-radius: 999px;
 }
 
 .sleep-history-empty {
@@ -3221,7 +3238,8 @@ body {
 }
 
 .sleep-history-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.88rem;
 }
@@ -3231,6 +3249,33 @@ body {
   padding: 0.65rem 0.85rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.sleep-history-table th:first-child,
+.sleep-history-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-card);
+  box-shadow: 2px 0 6px rgba(15, 23, 42, 0.05);
+}
+
+.sleep-history-table th:first-child {
+  z-index: 2;
+  background: var(--bg-hover);
+}
+
+.sleep-history-table th:nth-child(2),
+.sleep-history-table td:nth-child(2),
+.sleep-history-table th:nth-child(3),
+.sleep-history-table td:nth-child(3) {
+  min-width: 7.5rem;
+}
+
+.sleep-history-table th:nth-child(4),
+.sleep-history-table td:nth-child(4) {
+  min-width: 9.5rem;
 }
 
 .sleep-history-table th {
@@ -3272,15 +3317,16 @@ body {
 }
 
 .sleep-history-manual-form {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .sleep-history-manual-form input[type='time'] {
-  flex: 1;
-  min-width: 5.5rem;
+  flex: 0 0 auto;
+  width: 6.25rem;
+  min-width: 6.25rem;
   padding: 0.3rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -3381,5 +3427,23 @@ body {
   .sleep-chart-detail {
     font-size: 0.75rem;
     margin-top: 0.3rem;
+  }
+
+  .sleep-history-table th,
+  .sleep-history-table td {
+    padding: 0.55rem 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .sleep-history-manual-form input[type='time'] {
+    width: 5.75rem;
+    min-width: 5.75rem;
+    font-size: 0.78rem;
+  }
+
+  .sleep-history-duration-form .sleep-duration-h,
+  .sleep-history-duration-form .sleep-duration-m {
+    width: 2.5rem;
+    font-size: 0.78rem;
   }
 }
