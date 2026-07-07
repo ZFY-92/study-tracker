@@ -2877,6 +2877,16 @@ body {
   color: var(--text-muted);
 }
 
+.sleep-history-duration-cell .sleep-history-meta {
+  white-space: normal;
+}
+
+.sleep-duration-auto.sleep-history-duration-cell {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
 .sleep-duration-auto {
   display: inline-flex;
   align-items: center;

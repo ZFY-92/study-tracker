@@ -1,4 +1,4 @@
-const APP_VERSION = '48';
+const APP_VERSION = '49';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 const BED_MIGRATION_FLAG_KEY = 'learning-progress-bed-migration-v2';
@@ -551,32 +551,91 @@ function bedTimeToTimestampMs(bedDate, bedTime, wakeDate = null) {
   return parseDateTimeMs(bedDate, bedTime);
 }
 
-function getSleepDurationMinutes(wakeDate) {
+function getSleepSessionInfo(wakeDate) {
   const wakeRecord = state.sleepRecords[wakeDate];
   if (!wakeRecord?.wake) return null;
 
-  const wakeTs = parseDateTimeMs(wakeDate, wakeRecord.wake);
+  const wakeTime = wakeRecord.wake;
+  const wakeTs = parseDateTimeMs(wakeDate, wakeTime);
   const candidates = [];
 
   const prevDate = offsetDateStr(wakeDate, -1);
   const prevBed = state.sleepRecords[prevDate]?.bed;
   if (prevBed) {
-    candidates.push(bedTimeToTimestampMs(prevDate, prevBed, wakeDate));
+    candidates.push({
+      bedTs: bedTimeToTimestampMs(prevDate, prevBed, wakeDate),
+      bedTime: prevBed,
+      bedDate: prevDate,
+    });
   }
   if (wakeRecord.bed) {
-    candidates.push(bedTimeToTimestampMs(wakeDate, wakeRecord.bed, wakeDate));
+    candidates.push({
+      bedTs: bedTimeToTimestampMs(wakeDate, wakeRecord.bed, wakeDate),
+      bedTime: wakeRecord.bed,
+      bedDate: wakeDate,
+    });
   }
 
   let best = null;
-  for (const bedTs of candidates) {
-    if (bedTs >= wakeTs) continue;
-    const duration = Math.round((wakeTs - bedTs) / 60000);
-    if (duration >= 30 && duration <= 16 * 60 && (!best || bedTs > best.bedTs)) {
-      best = { bedTs, duration };
+  for (const candidate of candidates) {
+    if (candidate.bedTs >= wakeTs) continue;
+    const duration = Math.round((wakeTs - candidate.bedTs) / 60000);
+    if (duration >= 30 && duration <= 16 * 60 && (!best || candidate.bedTs > best.bedTs)) {
+      best = {
+        ...candidate,
+        duration,
+        wakeDate,
+        wakeTime,
+        wakeTs,
+      };
     }
   }
 
-  return best?.duration ?? null;
+  return best;
+}
+
+function inferSleepSessionFromWakeAndDuration(wakeDate, durationMinutes) {
+  const wakeRecord = state.sleepRecords[wakeDate];
+  if (!wakeRecord?.wake || durationMinutes == null) return null;
+
+  const wakeTime = wakeRecord.wake;
+  const wakeTs = parseDateTimeMs(wakeDate, wakeTime);
+  const bedTs = wakeTs - durationMinutes * 60000;
+  const bedDate = dateStrFromParts(
+    new Date(bedTs).getFullYear(),
+    new Date(bedTs).getMonth() + 1,
+    new Date(bedTs).getDate()
+  );
+  const bedTime = formatTimestampAsTime(bedTs);
+
+  return {
+    bedTs,
+    bedTime,
+    bedDate,
+    wakeDate,
+    wakeTime,
+    wakeTs,
+    duration: durationMinutes,
+    inferred: true,
+  };
+}
+
+function formatTimestampAsTime(ts) {
+  const d = new Date(ts);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatSleepSessionRange(session) {
+  if (!session) return '';
+  const bedLabel = formatTimestampAsTime(session.bedTs);
+  const wakeLabel = formatTimestampAsTime(session.wakeTs);
+  const crossDay = new Date(session.bedTs).toDateString() !== new Date(session.wakeTs).toDateString();
+  if (crossDay) return `${bedLabel} → 次日${wakeLabel}`;
+  return `${bedLabel} → ${wakeLabel}`;
+}
+
+function getSleepDurationMinutes(wakeDate) {
+  return getSleepSessionInfo(wakeDate)?.duration ?? null;
 }
 
 function getSleepDurationForDate(date) {
@@ -587,6 +646,28 @@ function getSleepDurationForDate(date) {
   const computed = getSleepDurationMinutes(date);
   if (computed != null) return { minutes: computed, source: 'auto' };
   return null;
+}
+
+function getSleepDurationDetail(date) {
+  const record = state.sleepRecords[date] || {};
+  if (record.duration != null) {
+    const session = getSleepSessionInfo(date) || inferSleepSessionFromWakeAndDuration(date, record.duration);
+    return { minutes: record.duration, source: 'manual', session };
+  }
+
+  const session = getSleepSessionInfo(date);
+  if (session) {
+    return { minutes: session.duration, source: 'auto', session };
+  }
+
+  return null;
+}
+
+function renderSleepDurationRangeMeta(date) {
+  const session = getSleepDurationDetail(date)?.session;
+  if (!session) return '';
+  const range = formatSleepSessionRange(session);
+  return `<small class="sleep-history-meta">${escapeHtml(range)}</small>`;
 }
 
 function formatDuration(minutes) {
@@ -1030,19 +1111,20 @@ function renderSleepHistoryCell(date, type, value) {
 
 function renderSleepDurationHistoryCell(date) {
   const record = state.sleepRecords[date] || {};
-  const info = getSleepDurationForDate(date);
+  const info = getSleepDurationDetail(date);
+  const rangeMeta = renderSleepDurationRangeMeta(date);
 
   if (record.duration != null) {
     return `
-      <span class="sleep-history-value">
-        <span class="sleep-history-time">${formatDuration(record.duration)}</span>
+      <span class="sleep-history-value sleep-history-duration-cell">
+        <span class="sleep-history-time">${formatDuration(record.duration)}${rangeMeta}</span>
         <button type="button" class="icon-btn sleep-history-delete-btn" data-date="${date}" data-type="duration" aria-label="删除睡眠时长">✕</button>
       </span>
     `;
   }
 
   if (info?.source === 'auto') {
-    return `<span class="sleep-duration-auto">${formatDuration(info.minutes)}<small>自动</small></span>`;
+    return `<span class="sleep-duration-auto sleep-history-duration-cell">${formatDuration(info.minutes)}${rangeMeta}<small>自动</small></span>`;
   }
 
   return `
