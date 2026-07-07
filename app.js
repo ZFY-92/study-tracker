@@ -1,6 +1,8 @@
-const APP_VERSION = '44';
+const APP_VERSION = '45';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
+/** 12 点前记录的睡觉时间视为凌晨，计入前一天（与睡觉时间图表逻辑一致） */
+const BED_MORNING_CUTOFF_HOUR = 12;
 
 /** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
 /** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
@@ -169,6 +171,10 @@ function loadData() {
 
   if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
     state.pinnedGoalId = null;
+  }
+
+  if (normalizeMorningBedRecords()) {
+    saveData();
   }
 }
 
@@ -396,6 +402,62 @@ function ensureSleepRecord(date = todayStr()) {
   return state.sleepRecords[date];
 }
 
+function isMorningBedTime(timeStr) {
+  const [h] = timeStr.split(':').map(Number);
+  return h < BED_MORNING_CUTOFF_HOUR;
+}
+
+function resolveBedRecordDate(date, timeStr) {
+  return isMorningBedTime(timeStr) ? offsetDateStr(date, -1) : date;
+}
+
+function formatBedRecordDateLabel(dateStr) {
+  const today = todayStr();
+  if (dateStr === today) return '今日';
+  if (dateStr === offsetDateStr(today, -1)) return '昨日';
+  return parseDateStr(dateStr).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+function getTodayBedDisplay(today = todayStr()) {
+  const todayRec = state.sleepRecords[today];
+  if (todayRec?.bed) {
+    return { date: today, time: todayRec.bed };
+  }
+
+  const prev = offsetDateStr(today, -1);
+  const prevBed = state.sleepRecords[prev]?.bed;
+  if (prevBed) {
+    return { date: prev, time: prevBed, fromPreviousDay: true };
+  }
+
+  return null;
+}
+
+function normalizeMorningBedRecords() {
+  let changed = false;
+  const dates = Object.keys(state.sleepRecords).sort();
+
+  for (const date of dates) {
+    const record = state.sleepRecords[date];
+    if (!record?.bed || !isMorningBedTime(record.bed)) continue;
+
+    const targetDate = offsetDateStr(date, -1);
+    if (!state.sleepRecords[targetDate]) state.sleepRecords[targetDate] = {};
+    if (!state.sleepRecords[targetDate].bed) {
+      state.sleepRecords[targetDate].bed = record.bed;
+      changed = true;
+    }
+
+    delete record.bed;
+    if (!record.wake && record.duration == null) {
+      delete state.sleepRecords[date];
+    }
+    changed = true;
+  }
+
+  return changed;
+}
+
 function isValidTimeStr(value) {
   return /^\d{2}:\d{2}$/.test(value);
 }
@@ -406,13 +468,18 @@ function setSleepTime(date, type, time) {
     return false;
   }
 
-  const record = ensureSleepRecord(date);
+  const targetDate = type === 'bed' ? resolveBedRecordDate(date, time) : date;
+  const record = ensureSleepRecord(targetDate);
   const hadValue = !!record[type];
   record[type] = time;
   saveData();
 
   const label = type === 'wake' ? '起床' : '睡觉';
-  showToast(hadValue ? `已更新${label}时间为 ${time}` : `已记录${label}时间 ${time}`);
+  let message = hadValue ? `已更新${label}时间为 ${time}` : `已记录${label}时间 ${time}`;
+  if (type === 'bed' && targetDate !== date) {
+    message += `（计入${formatBedRecordDateLabel(targetDate)}）`;
+  }
+  showToast(message);
   if (state.tab === 'sleep') renderSleep();
   return true;
 }
@@ -962,6 +1029,7 @@ function renderSleepDurationHistoryCell(date) {
 function renderSleep() {
   const today = todayStr();
   const record = state.sleepRecords[today] || {};
+  const bedDisplay = getTodayBedDisplay(today);
 
   const dateEl = $('#sleep-today-date');
   if (dateEl) {
@@ -977,6 +1045,7 @@ function renderSleep() {
   const bedEl = $('#sleep-bed-display');
   const wakeInput = $('#wake-manual-input');
   const bedInput = $('#bed-manual-input');
+  const bedForm = $('#bed-manual-form');
   const wakeDelete = $('#delete-wake-btn');
   const bedDelete = $('#delete-bed-btn');
 
@@ -985,17 +1054,30 @@ function renderSleep() {
     wakeEl.classList.toggle('has-value', !!record.wake);
   }
   if (bedEl) {
-    bedEl.textContent = record.bed || '—';
-    bedEl.classList.toggle('has-value', !!record.bed);
+    if (bedDisplay) {
+      bedEl.textContent = bedDisplay.fromPreviousDay
+        ? `${bedDisplay.time}（${formatBedRecordDateLabel(bedDisplay.date)}）`
+        : bedDisplay.time;
+    } else {
+      bedEl.textContent = '—';
+    }
+    bedEl.classList.toggle('has-value', !!bedDisplay);
   }
   if (wakeInput && document.activeElement !== wakeInput) {
     wakeInput.value = record.wake || '';
   }
   if (bedInput && document.activeElement !== bedInput) {
-    bedInput.value = record.bed || '';
+    bedInput.value = bedDisplay?.time || '';
+  }
+  if (bedForm) {
+    bedForm.dataset.date = bedDisplay?.date || today;
   }
   if (wakeDelete) wakeDelete.hidden = !record.wake;
-  if (bedDelete) bedDelete.hidden = !record.bed;
+  if (bedDelete) {
+    bedDelete.hidden = !bedDisplay;
+    if (bedDisplay) bedDelete.dataset.date = bedDisplay.date;
+    else delete bedDelete.dataset.date;
+  }
 
   const durationEl = $('#sleep-duration-display');
   const durationHint = $('#sleep-duration-hint');
