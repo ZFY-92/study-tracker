@@ -1,4 +1,4 @@
-const APP_VERSION = '46';
+const APP_VERSION = '47';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 /** 12 点前记录的睡觉时间视为凌晨，计入前一天（与睡觉时间图表逻辑一致） */
@@ -524,6 +524,12 @@ function parseDateTimeMs(dateStr, timeStr) {
   return new Date(y, mo - 1, d, h, m).getTime();
 }
 
+function bedTimeToTimestampMs(bedDate, bedTime) {
+  // 凌晨睡觉时间存储在前一天：实际入睡时刻 = 存储日期的次日 + 该时刻
+  const actualDate = isMorningBedTime(bedTime) ? offsetDateStr(bedDate, 1) : bedDate;
+  return parseDateTimeMs(actualDate, bedTime);
+}
+
 function getSleepDurationMinutes(wakeDate) {
   const wakeRecord = state.sleepRecords[wakeDate];
   if (!wakeRecord?.wake) return null;
@@ -532,11 +538,12 @@ function getSleepDurationMinutes(wakeDate) {
   const candidates = [];
 
   const prevDate = offsetDateStr(wakeDate, -1);
-  if (state.sleepRecords[prevDate]?.bed) {
-    candidates.push(parseDateTimeMs(prevDate, state.sleepRecords[prevDate].bed));
+  const prevBed = state.sleepRecords[prevDate]?.bed;
+  if (prevBed) {
+    candidates.push(bedTimeToTimestampMs(prevDate, prevBed));
   }
   if (wakeRecord.bed) {
-    candidates.push(parseDateTimeMs(wakeDate, wakeRecord.bed));
+    candidates.push(bedTimeToTimestampMs(wakeDate, wakeRecord.bed));
   }
 
   let best = null;
@@ -1094,7 +1101,7 @@ function renderSleep() {
     if (record.duration != null) {
       durationHint.textContent = '已手动录入';
     } else if (durationInfo?.source === 'auto') {
-      durationHint.textContent = '根据昨早睡床与今日起床自动计算';
+      durationHint.textContent = '根据昨晚/凌晨睡觉与今日起床自动计算';
     } else {
       durationHint.textContent = '记录起床/睡觉后自动计算，或下方手动录入';
     }
