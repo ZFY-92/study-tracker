@@ -1,4 +1,4 @@
-const APP_VERSION = '49';
+const APP_VERSION = '50';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 const BED_MIGRATION_FLAG_KEY = 'learning-progress-bed-migration-v2';
@@ -539,16 +539,22 @@ function parseDateTimeMs(dateStr, timeStr) {
   return new Date(y, mo - 1, d, h, m).getTime();
 }
 
-function bedTimeToTimestampMs(bedDate, bedTime, wakeDate = null) {
+function bedTimeToTimestampMs(bedDate, bedTime) {
   if (isMorningBedTime(bedTime)) {
-    // 凌晨时间存在起床日当天（旧数据未迁移）→ 直接按该日凌晨算
-    if (wakeDate && bedDate === wakeDate) {
-      return parseDateTimeMs(wakeDate, bedTime);
-    }
-    // 标准存储：凌晨时间记在前一天 → 实际入睡 = 存储日的次日
+    // 凌晨存入 bedDate，实际入睡时刻在次日该时间
     return parseDateTimeMs(offsetDateStr(bedDate, 1), bedTime);
   }
   return parseDateTimeMs(bedDate, bedTime);
+}
+
+/** 判断某条睡觉记录是否属于 wakeDate 这次起床 */
+function belongsToWakeSession(bedDate, bedTime, wakeDate) {
+  if (isMorningBedTime(bedTime)) {
+    // 例：3 号存 00:56 → 属于 4 号起床，不属于 3 号起床
+    return offsetDateStr(bedDate, 1) === wakeDate;
+  }
+  // 晚间睡觉：次日起床，或当天稍晚起床
+  return wakeDate === offsetDateStr(bedDate, 1) || wakeDate === bedDate;
 }
 
 function getSleepSessionInfo(wakeDate) {
@@ -559,20 +565,14 @@ function getSleepSessionInfo(wakeDate) {
   const wakeTs = parseDateTimeMs(wakeDate, wakeTime);
   const candidates = [];
 
-  const prevDate = offsetDateStr(wakeDate, -1);
-  const prevBed = state.sleepRecords[prevDate]?.bed;
-  if (prevBed) {
+  for (const bedDate of [offsetDateStr(wakeDate, -1), wakeDate]) {
+    const bedTime = state.sleepRecords[bedDate]?.bed;
+    if (!bedTime || !belongsToWakeSession(bedDate, bedTime, wakeDate)) continue;
+
     candidates.push({
-      bedTs: bedTimeToTimestampMs(prevDate, prevBed, wakeDate),
-      bedTime: prevBed,
-      bedDate: prevDate,
-    });
-  }
-  if (wakeRecord.bed) {
-    candidates.push({
-      bedTs: bedTimeToTimestampMs(wakeDate, wakeRecord.bed, wakeDate),
-      bedTime: wakeRecord.bed,
-      bedDate: wakeDate,
+      bedTs: bedTimeToTimestampMs(bedDate, bedTime),
+      bedTime,
+      bedDate,
     });
   }
 
