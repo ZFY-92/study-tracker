@@ -1,6 +1,7 @@
-const APP_VERSION = '47';
+const APP_VERSION = '48';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
+const BED_MIGRATION_FLAG_KEY = 'learning-progress-bed-migration-v2';
 /** 12 点前记录的睡觉时间视为凌晨，计入前一天（与睡觉时间图表逻辑一致） */
 const BED_MORNING_CUTOFF_HOUR = 12;
 
@@ -176,6 +177,34 @@ function loadData() {
   if (normalizeMorningBedRecords()) {
     saveData();
   }
+}
+
+/** 仅安全迁移：目标日无记录时才移动，避免覆盖/删除已有睡觉时间 */
+function normalizeMorningBedRecords() {
+  if (localStorage.getItem(BED_MIGRATION_FLAG_KEY) === 'done') return false;
+
+  let changed = false;
+  const dates = Object.keys(state.sleepRecords).sort();
+
+  for (const date of dates) {
+    const record = state.sleepRecords[date];
+    if (!record?.bed || !isMorningBedTime(record.bed)) continue;
+
+    const targetDate = offsetDateStr(date, -1);
+    const targetRecord = state.sleepRecords[targetDate];
+    if (targetRecord?.bed) continue;
+
+    if (!state.sleepRecords[targetDate]) state.sleepRecords[targetDate] = {};
+    state.sleepRecords[targetDate].bed = record.bed;
+    delete record.bed;
+    if (!record.wake && record.duration == null) {
+      delete state.sleepRecords[date];
+    }
+    changed = true;
+  }
+
+  localStorage.setItem(BED_MIGRATION_FLAG_KEY, 'done');
+  return changed;
 }
 
 function migrateDailyTasks(raw) {
@@ -426,36 +455,22 @@ function getTodayBedDisplay(today = todayStr()) {
 
   const prev = offsetDateStr(today, -1);
   const prevBed = state.sleepRecords[prev]?.bed;
-  if (prevBed) {
+  // 仅展示「存入昨日」的凌晨睡觉；晚间睡觉请在前一天的历史记录中查看
+  if (prevBed && isMorningBedTime(prevBed)) {
     return { date: prev, time: prevBed, fromPreviousDay: true };
   }
 
   return null;
 }
 
-function normalizeMorningBedRecords() {
-  let changed = false;
-  const dates = Object.keys(state.sleepRecords).sort();
-
-  for (const date of dates) {
-    const record = state.sleepRecords[date];
-    if (!record?.bed || !isMorningBedTime(record.bed)) continue;
-
-    const targetDate = offsetDateStr(date, -1);
-    if (!state.sleepRecords[targetDate]) state.sleepRecords[targetDate] = {};
-    if (!state.sleepRecords[targetDate].bed) {
-      state.sleepRecords[targetDate].bed = record.bed;
-      changed = true;
-    }
-
-    delete record.bed;
-    if (!record.wake && record.duration == null) {
-      delete state.sleepRecords[date];
-    }
-    changed = true;
+function formatHistoryBedTime(date, bedTime) {
+  if (!bedTime) return '';
+  if (isMorningBedTime(bedTime)) {
+    const wakeDay = offsetDateStr(date, 1);
+    const wakeLabel = wakeDay === todayStr() ? '今天' : wakeDay.slice(5).replace('-', '/');
+    return `${bedTime}<small class="sleep-history-meta">凌晨→${wakeLabel}起</small>`;
   }
-
-  return changed;
+  return bedTime;
 }
 
 function isValidTimeStr(value) {
@@ -524,10 +539,16 @@ function parseDateTimeMs(dateStr, timeStr) {
   return new Date(y, mo - 1, d, h, m).getTime();
 }
 
-function bedTimeToTimestampMs(bedDate, bedTime) {
-  // 凌晨睡觉时间存储在前一天：实际入睡时刻 = 存储日期的次日 + 该时刻
-  const actualDate = isMorningBedTime(bedTime) ? offsetDateStr(bedDate, 1) : bedDate;
-  return parseDateTimeMs(actualDate, bedTime);
+function bedTimeToTimestampMs(bedDate, bedTime, wakeDate = null) {
+  if (isMorningBedTime(bedTime)) {
+    // 凌晨时间存在起床日当天（旧数据未迁移）→ 直接按该日凌晨算
+    if (wakeDate && bedDate === wakeDate) {
+      return parseDateTimeMs(wakeDate, bedTime);
+    }
+    // 标准存储：凌晨时间记在前一天 → 实际入睡 = 存储日的次日
+    return parseDateTimeMs(offsetDateStr(bedDate, 1), bedTime);
+  }
+  return parseDateTimeMs(bedDate, bedTime);
 }
 
 function getSleepDurationMinutes(wakeDate) {
@@ -540,10 +561,10 @@ function getSleepDurationMinutes(wakeDate) {
   const prevDate = offsetDateStr(wakeDate, -1);
   const prevBed = state.sleepRecords[prevDate]?.bed;
   if (prevBed) {
-    candidates.push(bedTimeToTimestampMs(prevDate, prevBed));
+    candidates.push(bedTimeToTimestampMs(prevDate, prevBed, wakeDate));
   }
   if (wakeRecord.bed) {
-    candidates.push(bedTimeToTimestampMs(wakeDate, wakeRecord.bed));
+    candidates.push(bedTimeToTimestampMs(wakeDate, wakeRecord.bed, wakeDate));
   }
 
   let best = null;
@@ -990,9 +1011,10 @@ function renderActiveSleepChart(dates) {
 function renderSleepHistoryCell(date, type, value) {
   const label = type === 'wake' ? '起床' : '睡觉';
   if (value) {
+    const display = type === 'bed' ? formatHistoryBedTime(date, value) : value;
     return `
       <span class="sleep-history-value">
-        <span class="sleep-history-time">${value}</span>
+        <span class="sleep-history-time">${display}</span>
         <button type="button" class="icon-btn sleep-history-delete-btn" data-date="${date}" data-type="${type}" aria-label="删除${label}">✕</button>
       </span>
     `;

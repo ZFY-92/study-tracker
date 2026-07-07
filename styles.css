@@ -3304,6 +3304,15 @@ body {
   min-width: 2.75rem;
 }
 
+.sleep-history-meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
 .sleep-history-delete-btn {
   width: 24px;
   height: 24px;
