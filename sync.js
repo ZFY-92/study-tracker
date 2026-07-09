@@ -247,6 +247,121 @@
     return new Date(item?.updatedAt || item?.completedAt || item?.createdAt || 0).getTime();
   }
 
+  function entityEventTime(item) {
+    const updated = entityTime(item);
+    const deleted = new Date(item?.deletedAt || 0).getTime();
+    return Math.max(updated, deleted);
+  }
+
+  function isEntityDeleted(item) {
+    const deleted = new Date(item?.deletedAt || 0).getTime();
+    return deleted > 0 && deleted >= entityTime(item);
+  }
+
+  function stripDeletedAt(item) {
+    if (!item) return item;
+    const { deletedAt, ...rest } = item;
+    return rest;
+  }
+
+  function mergeTaskEntity(local, remote) {
+    if (!local) return isEntityDeleted(remote) ? null : stripDeletedAt(remote);
+    if (!remote) return isEntityDeleted(local) ? null : stripDeletedAt(local);
+
+    const pickRemote = entityEventTime(remote) >= entityEventTime(local);
+    const picked = pickRemote ? { ...remote } : { ...local };
+    if (isEntityDeleted(picked)) return null;
+    return stripDeletedAt(picked);
+  }
+
+  function mergeTasks(localTasks, remoteTasks) {
+    const localMap = new Map((localTasks || []).map((task) => [task.id, task]));
+    const remoteMap = new Map((remoteTasks || []).map((task) => [task.id, task]));
+    const ids = new Set([...localMap.keys(), ...remoteMap.keys()]);
+    const result = [];
+
+    for (const id of ids) {
+      const merged = mergeTaskEntity(localMap.get(id), remoteMap.get(id));
+      if (merged) result.push(merged);
+    }
+
+    return result;
+  }
+
+  function mergeGoalEntity(local, remote) {
+    if (!local) {
+      if (isEntityDeleted(remote)) return null;
+      return {
+        ...stripDeletedAt(remote),
+        tasks: mergeTasks([], remote?.tasks || []),
+      };
+    }
+    if (!remote) {
+      if (isEntityDeleted(local)) return null;
+      return {
+        ...stripDeletedAt(local),
+        tasks: mergeTasks(local.tasks || [], []),
+      };
+    }
+
+    const pickRemote = entityEventTime(remote) >= entityEventTime(local);
+    const meta = pickRemote ? { ...remote } : { ...local };
+    if (isEntityDeleted(meta)) return null;
+
+    const merged = {
+      ...stripDeletedAt(meta),
+      tasks: mergeTasks(local.tasks || [], remote.tasks || []),
+      updatedAt: new Date(Math.max(entityEventTime(local), entityEventTime(remote))).toISOString(),
+    };
+    return merged;
+  }
+
+  function mergeGoals(local, remote) {
+    const localMap = new Map((local || []).map((goal) => [goal.id, goal]));
+    const remoteMap = new Map((remote || []).map((goal) => [goal.id, goal]));
+    const ids = new Set([...localMap.keys(), ...remoteMap.keys()]);
+    const result = [];
+
+    for (const id of ids) {
+      const merged = mergeGoalEntity(localMap.get(id), remoteMap.get(id));
+      if (merged) result.push(merged);
+    }
+
+    return result;
+  }
+
+  function mergeGoalOrder(localOrder, remoteOrder, localAt, remoteAt, activeGoalIds) {
+    const pickRemote = new Date(remoteAt || 0).getTime() >= new Date(localAt || 0).getTime();
+    const order = pickRemote ? remoteOrder : localOrder;
+    if (!Array.isArray(order) || order.length === 0) return null;
+
+    const seen = new Set();
+    const result = [];
+    for (const id of order) {
+      if (!activeGoalIds.has(id) || seen.has(id)) continue;
+      result.push(id);
+      seen.add(id);
+    }
+
+    for (const id of activeGoalIds) {
+      if (!seen.has(id)) result.push(id);
+    }
+
+    return result;
+  }
+
+  function mergePinnedGoal(localId, remoteId, localAt, remoteAt, activeGoalIds) {
+    const pickRemote = new Date(remoteAt || 0).getTime() >= new Date(localAt || 0).getTime();
+    let pinnedGoalId = pickRemote ? remoteId : localId;
+
+    if (!pinnedGoalId || !activeGoalIds.has(pinnedGoalId)) {
+      const fallback = pickRemote ? localId : remoteId;
+      pinnedGoalId = fallback && activeGoalIds.has(fallback) ? fallback : null;
+    }
+
+    return pinnedGoalId || null;
+  }
+
   function mergeById(local, remote, mergeFn) {
     const map = new Map();
     (local || []).forEach((item) => map.set(item.id, item));
@@ -271,32 +386,6 @@
     return base;
   }
 
-  function mergeGoals(local, remote) {
-    const localMap = new Map((local || []).map((g) => [g.id, g]));
-    const remoteMap = new Map((remote || []).map((g) => [g.id, g]));
-    const ids = new Set([...localMap.keys(), ...remoteMap.keys()]);
-    const result = [];
-
-    for (const id of ids) {
-      const lg = localMap.get(id);
-      const rg = remoteMap.get(id);
-      if (!lg) {
-        result.push(rg);
-        continue;
-      }
-      if (!rg) {
-        result.push(lg);
-        continue;
-      }
-      const useRemoteMeta = entityTime(rg) >= entityTime(lg);
-      const base = useRemoteMeta ? { ...rg } : { ...lg };
-      base.tasks = mergeById(lg.tasks || [], rg.tasks || []);
-      base.updatedAt = new Date(Math.max(entityTime(lg), entityTime(rg))).toISOString();
-      result.push(base);
-    }
-    return result;
-  }
-
   function mergeDailyTasks(local, remote) {
     const result = { ...(local || {}) };
     for (const [date, remoteTasks] of Object.entries(remote || {})) {
@@ -315,6 +404,77 @@
         result[key] = value;
       }
     }
+    return result;
+  }
+
+  const SLEEP_SYNC_FIELDS = ['wake', 'bed', 'duration'];
+
+  function sleepFieldEventTime(entry, field) {
+    const updated = new Date(entry?.[`${field}UpdatedAt`] || 0).getTime();
+    const deleted = new Date(entry?.[`${field}DeletedAt`] || 0).getTime();
+    return Math.max(updated, deleted);
+  }
+
+  function mergeSleepField(localEntry, remoteEntry, field, preferRemote) {
+    const localValue = localEntry?.[field];
+    const remoteValue = remoteEntry?.[field];
+    const localEvent = sleepFieldEventTime(localEntry, field);
+    const remoteEvent = sleepFieldEventTime(remoteEntry, field);
+
+    let pickLocal;
+    if (localEvent === 0 && remoteEvent === 0) {
+      if (localValue === remoteValue || (localValue == null && remoteValue == null)) pickLocal = true;
+      else if (localValue == null) pickLocal = false;
+      else if (remoteValue == null) pickLocal = true;
+      else pickLocal = !preferRemote;
+    } else {
+      pickLocal = localEvent >= remoteEvent;
+    }
+
+    const picked = pickLocal ? localEntry || {} : remoteEntry || {};
+    const updatedAt = picked[`${field}UpdatedAt`] || '';
+    const deletedAt = picked[`${field}DeletedAt`] || '';
+    const deletedTime = new Date(deletedAt || 0).getTime();
+    const updatedTime = new Date(updatedAt || 0).getTime();
+    const result = {};
+
+    if (deletedTime > 0 && deletedTime >= updatedTime) {
+      result[`${field}DeletedAt`] = deletedAt;
+      return result;
+    }
+
+    const value = pickLocal ? localValue : remoteValue;
+    if (value != null && value !== '') {
+      result[field] = value;
+      if (updatedAt) result[`${field}UpdatedAt`] = updatedAt;
+    } else if (localEvent === 0 && remoteEvent === 0) {
+      const fallback = pickLocal ? localValue : remoteValue;
+      if (fallback != null && fallback !== '') result[field] = fallback;
+    }
+
+    return result;
+  }
+
+  function mergeSleepRecords(local, remote, preferRemote) {
+    const result = {};
+    const dates = new Set([...Object.keys(local || {}), ...Object.keys(remote || {})]);
+
+    for (const date of dates) {
+      const localEntry = local?.[date];
+      const remoteEntry = remote?.[date];
+      if (!localEntry && !remoteEntry) continue;
+
+      const merged = {};
+      for (const field of SLEEP_SYNC_FIELDS) {
+        Object.assign(merged, mergeSleepField(localEntry, remoteEntry, field, preferRemote));
+      }
+
+      const hasValue = SLEEP_SYNC_FIELDS.some((field) => merged[field] != null && merged[field] !== '');
+      const hasTombstone = SLEEP_SYNC_FIELDS.some((field) => merged[`${field}DeletedAt`]);
+      if (!hasValue && !hasTombstone) continue;
+      result[date] = merged;
+    }
+
     return result;
   }
 
@@ -370,22 +530,42 @@
 
   function mergePayload(localData, remoteData) {
     const mergedGoals = mergeGoals(localData.goals || [], remoteData.goals || []);
-    const goalIds = new Set(mergedGoals.map((g) => g.id));
+    const activeGoalIds = new Set(mergedGoals.map((goal) => goal.id));
+    const goalOrder =
+      mergeGoalOrder(
+        localData.goalOrder,
+        remoteData.goalOrder,
+        localData.goalOrderUpdatedAt,
+        remoteData.goalOrderUpdatedAt,
+        activeGoalIds
+      ) || mergedGoals.map((goal) => goal.id);
+    const pinnedGoalId = mergePinnedGoal(
+      localData.pinnedGoalId,
+      remoteData.pinnedGoalId,
+      localData.pinnedGoalUpdatedAt,
+      remoteData.pinnedGoalUpdatedAt,
+      activeGoalIds
+    );
+    const pinnedGoalUpdatedAt =
+      new Date(remoteData.pinnedGoalUpdatedAt || 0).getTime() >= new Date(localData.pinnedGoalUpdatedAt || 0).getTime()
+        ? remoteData.pinnedGoalUpdatedAt || ''
+        : localData.pinnedGoalUpdatedAt || '';
+    const goalOrderUpdatedAt =
+      new Date(remoteData.goalOrderUpdatedAt || 0).getTime() >= new Date(localData.goalOrderUpdatedAt || 0).getTime()
+        ? remoteData.goalOrderUpdatedAt || ''
+        : localData.goalOrderUpdatedAt || '';
     const localSync = new Date(localData.syncedAt || getLastSyncAt() || 0).getTime();
     const remoteSync = new Date(remoteData.syncedAt || 0).getTime();
     const preferRemote = remoteSync >= localSync;
 
-    let pinnedGoalId = preferRemote ? remoteData.pinnedGoalId : localData.pinnedGoalId;
-    if (pinnedGoalId && !goalIds.has(pinnedGoalId)) {
-      const fallback = preferRemote ? localData.pinnedGoalId : remoteData.pinnedGoalId;
-      pinnedGoalId = fallback && goalIds.has(fallback) ? fallback : null;
-    }
-
     return {
       goals: mergedGoals,
-      pinnedGoalId: pinnedGoalId || null,
+      pinnedGoalId,
+      pinnedGoalUpdatedAt,
+      goalOrder,
+      goalOrderUpdatedAt,
       dailyTasks: mergeDailyTasks(localData.dailyTasks || {}, remoteData.dailyTasks || {}),
-      sleepRecords: mergeRecordMaps(localData.sleepRecords || {}, remoteData.sleepRecords || {}),
+      sleepRecords: mergeSleepRecords(localData.sleepRecords || {}, remoteData.sleepRecords || {}, preferRemote),
       gymDays: mergeGymDays(localData.gymDays || {}, remoteData.gymDays || {}),
       gymReminderDays: preferRemote
         ? (remoteData.gymReminderDays ?? localData.gymReminderDays ?? 2)
@@ -415,10 +595,13 @@
   function hasDataChanged(localData, merged) {
     return (
       JSON.stringify(localData.goals || []) !== JSON.stringify(merged.goals || []) ||
+      JSON.stringify(localData.goalOrder || []) !== JSON.stringify(merged.goalOrder || []) ||
       JSON.stringify(localData.dailyTasks || {}) !== JSON.stringify(merged.dailyTasks || {}) ||
       JSON.stringify(localData.sleepRecords || {}) !== JSON.stringify(merged.sleepRecords || {}) ||
       JSON.stringify(localData.gymDays || {}) !== JSON.stringify(merged.gymDays || {}) ||
       localData.pinnedGoalId !== merged.pinnedGoalId ||
+      localData.pinnedGoalUpdatedAt !== merged.pinnedGoalUpdatedAt ||
+      localData.goalOrderUpdatedAt !== merged.goalOrderUpdatedAt ||
       localData.gymReminderDays !== merged.gymReminderDays ||
       localData.carryOverDailyTasks !== merged.carryOverDailyTasks ||
       localData.lastRolloverDate !== merged.lastRolloverDate
@@ -429,6 +612,9 @@
     return {
       goals: localData.goals || [],
       pinnedGoalId: localData.pinnedGoalId || null,
+      pinnedGoalUpdatedAt: localData.pinnedGoalUpdatedAt || '',
+      goalOrder: localData.goalOrder || [],
+      goalOrderUpdatedAt: localData.goalOrderUpdatedAt || '',
       dailyTasks: localData.dailyTasks || {},
       sleepRecords: localData.sleepRecords || {},
       gymDays: localData.gymDays || {},
@@ -490,9 +676,10 @@
 
       const merged = mergePayload(localData, remoteData);
       const changed = hasDataChanged(localData, merged);
+      const remoteChanged = hasDataChanged(remoteData, merged);
 
       if (changed && callbacks.applyData) callbacks.applyData(merged);
-      if (changed || forcePush) await pushRemote(syncKey, merged);
+      if (changed || forcePush || remoteChanged) await pushRemote(syncKey, merged);
       else setLastSyncAt(new Date().toISOString());
 
       setStatus('ok');

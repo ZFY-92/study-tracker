@@ -1,21 +1,21 @@
-const APP_VERSION = '50';
+const APP_VERSION = '52';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 const BED_MIGRATION_FLAG_KEY = 'learning-progress-bed-migration-v2';
 /** 12 点前记录的睡觉时间视为凌晨，计入前一天（与睡觉时间图表逻辑一致） */
 const BED_MORNING_CUTOFF_HOUR = 12;
 
-/** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string }} TaskNode */
-/** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string }} Goal */
+/** @typedef {{ id: string, title: string, note: string, completed: boolean, completedAt: string | null, createdAt: string, updatedAt?: string, deletedAt?: string }} TaskNode */
+/** @typedef {{ id: string, title: string, description: string, category: string, deadline: string, color: string, tasks: TaskNode[], createdAt: string, updatedAt: string, deletedAt?: string }} Goal */
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string }} DailySubTask */
 /** @typedef {{ id: string, title: string, completed: boolean, completedAt: string | null, createdAt: string, source: 'custom' | 'goal', goalId?: string, taskId?: string, carriedFrom?: string, subtasks?: DailySubTask[] }} DailyTask */
 
-/** @typedef {{ wake?: string, bed?: string, duration?: number }} SleepDayRecord */
+/** @typedef {{ wake?: string, bed?: string, duration?: number, wakeUpdatedAt?: string, bedUpdatedAt?: string, durationUpdatedAt?: string, wakeDeletedAt?: string, bedDeletedAt?: string, durationDeletedAt?: string }} SleepDayRecord */
 
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, gymDays: Record<string, true>, gymReminderDays: number, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, gymDays: Record<string, true>, gymReminderDays: number, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, pinnedGoalUpdatedAt: string, goalOrderUpdatedAt: string, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -27,6 +27,8 @@ let state = {
   filter: 'all',
   selectedGoalId: null,
   pinnedGoalId: null,
+  pinnedGoalUpdatedAt: '',
+  goalOrderUpdatedAt: '',
   selectedDailyDate: '',
   calendarMonth: '',
   carryOverDailyTasks: true,
@@ -113,6 +115,7 @@ function migrateGoal(goal) {
     tasks: Array.isArray(goal.tasks) ? goal.tasks : [],
     createdAt: goal.createdAt || new Date().toISOString(),
     updatedAt: goal.updatedAt || new Date().toISOString(),
+    deletedAt: typeof goal.deletedAt === 'string' ? goal.deletedAt : undefined,
   };
 
   if (base.tasks.length === 0 && (goal.progressType || goal.target != null)) {
@@ -132,15 +135,84 @@ function migrateGoal(goal) {
 
   return {
     ...base,
-    tasks: base.tasks.map((task) => ({
-      id: task.id || uid(),
-      title: task.title || '',
-      note: task.note || '',
-      completed: !!task.completed,
-      completedAt: task.completedAt || null,
-      createdAt: task.createdAt || base.createdAt,
-    })),
+    tasks: base.tasks
+      .map((task) => ({
+        id: task.id || uid(),
+        title: task.title || '',
+        note: task.note || '',
+        completed: !!task.completed,
+        completedAt: task.completedAt || null,
+        createdAt: task.createdAt || base.createdAt,
+        updatedAt: task.updatedAt || task.completedAt || task.createdAt || base.createdAt,
+        deletedAt: typeof task.deletedAt === 'string' ? task.deletedAt : undefined,
+      })),
+    deletedAt: base.deletedAt,
   };
+}
+
+function isGoalDeleted(goal) {
+  return !!(goal && goal.deletedAt);
+}
+
+function isTaskDeleted(task) {
+  return !!(task && task.deletedAt);
+}
+
+function getActiveGoals() {
+  return state.goals.filter((goal) => !isGoalDeleted(goal));
+}
+
+function getGoalTasks(goal) {
+  return (goal?.tasks || []).filter((task) => !isTaskDeleted(task));
+}
+
+function touchGoal(goal, extra = {}) {
+  Object.assign(goal, extra);
+  if ('deletedAt' in extra && extra.deletedAt === undefined) delete goal.deletedAt;
+  goal.updatedAt = new Date().toISOString();
+}
+
+function touchTask(task, extra = {}) {
+  Object.assign(task, extra);
+  if ('deletedAt' in extra && extra.deletedAt === undefined) delete task.deletedAt;
+  task.updatedAt = new Date().toISOString();
+}
+
+function touchGoalOrder() {
+  state.goalOrderUpdatedAt = new Date().toISOString();
+}
+
+function touchPinnedGoal() {
+  state.pinnedGoalUpdatedAt = new Date().toISOString();
+}
+
+function getGoalOrder() {
+  return getActiveGoals().map((goal) => goal.id);
+}
+
+function applyGoalOrder(order) {
+  if (!Array.isArray(order) || order.length === 0) return;
+
+  const map = new Map(state.goals.map((goal) => [goal.id, goal]));
+  const activeIds = new Set(getActiveGoals().map((goal) => goal.id));
+  const reordered = [];
+  const seen = new Set();
+
+  for (const id of order) {
+    if (!activeIds.has(id) || seen.has(id)) continue;
+    const goal = map.get(id);
+    if (goal) {
+      reordered.push(goal);
+      seen.add(id);
+    }
+  }
+
+  for (const goal of getActiveGoals()) {
+    if (!seen.has(goal.id)) reordered.push(goal);
+  }
+
+  const tombstones = state.goals.filter((goal) => isGoalDeleted(goal));
+  state.goals = [...reordered, ...tombstones];
 }
 
 function loadData() {
@@ -150,6 +222,9 @@ function loadData() {
       const data = JSON.parse(raw);
       state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
       state.pinnedGoalId = data.pinnedGoalId || null;
+      state.pinnedGoalUpdatedAt = data.pinnedGoalUpdatedAt || '';
+      state.goalOrderUpdatedAt = data.goalOrderUpdatedAt || '';
+      if (Array.isArray(data.goalOrder)) applyGoalOrder(data.goalOrder);
       state.dailyTasks = migrateDailyTasks(data.dailyTasks);
       state.sleepRecords = migrateSleepRecords(data.sleepRecords);
       state.gymDays = migrateGymDays(data.gymDays);
@@ -160,6 +235,8 @@ function loadData() {
   } catch {
     state.goals = [];
     state.pinnedGoalId = null;
+    state.pinnedGoalUpdatedAt = '';
+    state.goalOrderUpdatedAt = '';
     state.dailyTasks = {};
     state.sleepRecords = {};
     state.gymDays = {};
@@ -170,7 +247,7 @@ function loadData() {
 
   syncSelectedDailyDate();
 
-  if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
+  if (state.pinnedGoalId && !getActiveGoals().some((g) => g.id === state.pinnedGoalId)) {
     state.pinnedGoalId = null;
   }
 
@@ -252,7 +329,14 @@ function migrateSleepRecords(raw) {
     if (typeof record.duration === 'number' && record.duration > 0 && record.duration <= 24 * 60) {
       entry.duration = Math.round(record.duration);
     }
-    if (entry.wake || entry.bed || entry.duration != null) result[date] = entry;
+    for (const field of ['wake', 'bed', 'duration']) {
+      const updatedKey = `${field}UpdatedAt`;
+      const deletedKey = `${field}DeletedAt`;
+      if (typeof record[updatedKey] === 'string') entry[updatedKey] = record[updatedKey];
+      if (typeof record[deletedKey] === 'string') entry[deletedKey] = record[deletedKey];
+    }
+    const hasTombstone = entry.wakeDeletedAt || entry.bedDeletedAt || entry.durationDeletedAt;
+    if (entry.wake || entry.bed || entry.duration != null || hasTombstone) result[date] = entry;
   }
   return result;
 }
@@ -287,6 +371,9 @@ function saveData() {
     JSON.stringify({
       goals: state.goals,
       pinnedGoalId: state.pinnedGoalId,
+      pinnedGoalUpdatedAt: state.pinnedGoalUpdatedAt,
+      goalOrder: getGoalOrder(),
+      goalOrderUpdatedAt: state.goalOrderUpdatedAt,
       dailyTasks: state.dailyTasks,
       sleepRecords: state.sleepRecords,
       gymDays: state.gymDays,
@@ -304,6 +391,9 @@ function getSyncData() {
   return {
     goals: JSON.parse(JSON.stringify(state.goals)),
     pinnedGoalId: state.pinnedGoalId,
+    pinnedGoalUpdatedAt: state.pinnedGoalUpdatedAt,
+    goalOrder: getGoalOrder(),
+    goalOrderUpdatedAt: state.goalOrderUpdatedAt,
     dailyTasks: JSON.parse(JSON.stringify(state.dailyTasks)),
     sleepRecords: JSON.parse(JSON.stringify(state.sleepRecords)),
     gymDays: { ...state.gymDays },
@@ -317,6 +407,9 @@ function getSyncData() {
 function applySyncData(data) {
   state.goals = Array.isArray(data.goals) ? data.goals.map(migrateGoal) : [];
   state.pinnedGoalId = data.pinnedGoalId || null;
+  state.pinnedGoalUpdatedAt = data.pinnedGoalUpdatedAt || '';
+  state.goalOrderUpdatedAt = data.goalOrderUpdatedAt || '';
+  if (Array.isArray(data.goalOrder)) applyGoalOrder(data.goalOrder);
   state.dailyTasks = migrateDailyTasks(data.dailyTasks);
   state.sleepRecords = migrateSleepRecords(data.sleepRecords);
   state.gymDays = migrateGymDays(data.gymDays);
@@ -324,7 +417,7 @@ function applySyncData(data) {
   state.carryOverDailyTasks = data.carryOverDailyTasks !== false;
   state.lastRolloverDate = data.lastRolloverDate || '';
   syncSelectedDailyDate();
-  if (state.pinnedGoalId && !state.goals.some((g) => g.id === state.pinnedGoalId)) {
+  if (state.pinnedGoalId && !getActiveGoals().some((g) => g.id === state.pinnedGoalId)) {
     state.pinnedGoalId = null;
   }
   saveData();
@@ -431,6 +524,31 @@ function ensureSleepRecord(date = todayStr()) {
   return state.sleepRecords[date];
 }
 
+function touchSleepField(record, field, value) {
+  const now = new Date().toISOString();
+  const updatedKey = `${field}UpdatedAt`;
+  const deletedKey = `${field}DeletedAt`;
+
+  if (value === undefined || value === null || value === '') {
+    delete record[field];
+    record[deletedKey] = now;
+    delete record[updatedKey];
+    return;
+  }
+
+  record[field] = value;
+  record[updatedKey] = now;
+  delete record[deletedKey];
+}
+
+function cleanSleepRecord(date) {
+  const record = state.sleepRecords[date];
+  if (!record) return;
+  const hasValue = !!(record.wake || record.bed || record.duration != null);
+  const hasTombstone = !!(record.wakeDeletedAt || record.bedDeletedAt || record.durationDeletedAt);
+  if (!hasValue && !hasTombstone) delete state.sleepRecords[date];
+}
+
 function isMorningBedTime(timeStr) {
   const [h] = timeStr.split(':').map(Number);
   return h < BED_MORNING_CUTOFF_HOUR;
@@ -486,7 +604,7 @@ function setSleepTime(date, type, time) {
   const targetDate = type === 'bed' ? resolveBedRecordDate(date, time) : date;
   const record = ensureSleepRecord(targetDate);
   const hadValue = !!record[type];
-  record[type] = time;
+  touchSleepField(record, type, time);
   saveData();
 
   const label = type === 'wake' ? '起床' : '睡觉';
@@ -503,10 +621,8 @@ function deleteSleepTime(date, type) {
   const record = state.sleepRecords[date];
   if (!record?.[type]) return;
 
-  delete record[type];
-  if (!record.wake && !record.bed && record.duration == null) {
-    delete state.sleepRecords[date];
-  }
+  touchSleepField(record, type, undefined);
+  cleanSleepRecord(date);
 
   saveData();
   const labels = { wake: '起床', bed: '睡觉', duration: '睡眠时长' };
@@ -698,7 +814,7 @@ function setSleepDuration(date, hours, minutes) {
 
   const record = ensureSleepRecord(date);
   const hadValue = record.duration != null;
-  record.duration = total;
+  touchSleepField(record, 'duration', total);
   saveData();
   showToast(hadValue ? `已更新睡眠时长为 ${formatDuration(total)}` : `已记录睡眠时长 ${formatDuration(total)}`);
   if (state.tab === 'sleep') renderSleep();
@@ -1597,7 +1713,8 @@ function updateGoalTaskTitle(goalId, taskId, title) {
   if (!task) return;
 
   task.title = trimmed;
-  goal.updatedAt = new Date().toISOString();
+  touchTask(task);
+  touchGoal(goal);
   state.editingGoalTaskId = null;
   saveData();
   render();
@@ -1687,7 +1804,8 @@ function getGoalTitle(goalId) {
 
 function getPinnedGoal() {
   if (!state.pinnedGoalId) return null;
-  return state.goals.find((g) => g.id === state.pinnedGoalId) || null;
+  const goal = state.goals.find((g) => g.id === state.pinnedGoalId);
+  return goal && !isGoalDeleted(goal) ? goal : null;
 }
 
 function setPinnedGoal(goalId) {
@@ -1698,24 +1816,27 @@ function setPinnedGoal(goalId) {
     state.pinnedGoalId = goalId;
     showToast('已设为首页展示');
   }
+  touchPinnedGoal();
   saveData();
   render();
 }
 
 function setPinnedGoalFromSelect(goalId) {
   state.pinnedGoalId = goalId || null;
+  touchPinnedGoal();
   saveData();
   render();
   if (goalId) showToast('已设为首页展示');
 }
 
 function getNextTask(goal) {
-  return goal.tasks.find((t) => !t.completed) || null;
+  return getGoalTasks(goal).find((t) => !t.completed) || null;
 }
 
 function getTaskStats(goal) {
-  const total = goal.tasks.length;
-  const completed = goal.tasks.filter((t) => t.completed).length;
+  const tasks = getGoalTasks(goal);
+  const total = tasks.length;
+  const completed = tasks.filter((t) => t.completed).length;
   const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
   return { total, completed, pct };
 }
@@ -1770,18 +1891,19 @@ function renderInlineEditForm(value, attrs = '') {
 }
 
 function filteredGoals() {
+  const goals = getActiveGoals();
   switch (state.filter) {
     case 'active':
-      return state.goals.filter((g) => !isCompleted(g));
+      return goals.filter((g) => !isCompleted(g));
     case 'completed':
-      return state.goals.filter((g) => isCompleted(g));
+      return goals.filter((g) => isCompleted(g));
     default:
-      return state.goals;
+      return goals;
   }
 }
 
 function canReorderGoals() {
-  return state.view === 'goals' && state.filter === 'all' && state.goals.length > 1;
+  return state.view === 'goals' && state.filter === 'all' && getActiveGoals().length > 1;
 }
 
 function navigateTo(view, options = {}) {
@@ -1822,24 +1944,32 @@ function goBack() {
 
 function moveGoalToIndex(fromId, toId) {
   if (fromId === toId) return;
-  const fromIdx = state.goals.findIndex((g) => g.id === fromId);
-  const toIdx = state.goals.findIndex((g) => g.id === toId);
+  const active = getActiveGoals();
+  const fromIdx = active.findIndex((g) => g.id === fromId);
+  const toIdx = active.findIndex((g) => g.id === toId);
   if (fromIdx < 0 || toIdx < 0) return;
 
-  const [item] = state.goals.splice(fromIdx, 1);
-  state.goals.splice(toIdx, 0, item);
+  const [item] = active.splice(fromIdx, 1);
+  active.splice(toIdx, 0, item);
+  const tombstones = state.goals.filter((g) => isGoalDeleted(g));
+  state.goals = [...active, ...tombstones];
+  touchGoalOrder();
   saveData();
   renderGoals();
   showToast('顺序已更新');
 }
 
 function moveGoalByOffset(goalId, offset) {
-  const idx = state.goals.findIndex((g) => g.id === goalId);
+  const active = getActiveGoals();
+  const idx = active.findIndex((g) => g.id === goalId);
   const newIdx = idx + offset;
-  if (idx < 0 || newIdx < 0 || newIdx >= state.goals.length) return;
+  if (idx < 0 || newIdx < 0 || newIdx >= active.length) return;
 
-  const [item] = state.goals.splice(idx, 1);
-  state.goals.splice(newIdx, 0, item);
+  const [item] = active.splice(idx, 1);
+  active.splice(newIdx, 0, item);
+  const tombstones = state.goals.filter((g) => isGoalDeleted(g));
+  state.goals = [...active, ...tombstones];
+  touchGoalOrder();
   saveData();
   renderGoals();
   showToast('顺序已更新');
@@ -1954,9 +2084,10 @@ function showActiveView() {
 }
 
 function renderHome() {
-  const total = state.goals.length;
-  const active = state.goals.filter((g) => !isCompleted(g)).length;
-  const completed = state.goals.filter((g) => isCompleted(g)).length;
+  const goals = getActiveGoals();
+  const total = goals.length;
+  const active = goals.filter((g) => !isCompleted(g)).length;
+  const completed = goals.filter((g) => isCompleted(g)).length;
 
   const cards = [
     { filter: 'all', icon: '🎯', title: '全部目标', desc: `${total} 个学习目标`, color: '#3b82f6' },
@@ -1986,13 +2117,13 @@ function renderHomeFeatured() {
   const container = $('#home-featured');
   if (!container) return;
 
-  if (state.goals.length === 0) {
+  if (getActiveGoals().length === 0) {
     container.innerHTML = '';
     return;
   }
 
   const goal = getPinnedGoal();
-  const options = state.goals
+  const options = getActiveGoals()
     .map(
       (g) =>
         `<option value="${g.id}" ${state.pinnedGoalId === g.id ? 'selected' : ''}>${escapeHtml(g.title)}</option>`
@@ -2004,7 +2135,7 @@ function renderHomeFeatured() {
     const { pct } = getTaskStats(goal);
     const nextTask = getNextTask(goal);
     const dl = formatDeadline(goal.deadline);
-    const pendingPreview = goal.tasks.filter((t) => !t.completed).slice(0, 3);
+    const pendingPreview = getGoalTasks(goal).filter((t) => !t.completed).slice(0, 3);
 
     featuredCard = `
       <article class="featured-goal-card" data-id="${goal.id}" style="--goal-color:${goal.color}">
@@ -2026,7 +2157,7 @@ function renderHomeFeatured() {
         ${
           nextTask
             ? `<p class="next-task">下一节点：${escapeHtml(nextTask.title)}</p>`
-            : goal.tasks.length === 0
+            : getGoalTasks(goal).length === 0
               ? `<p class="next-task muted">还没有任务节点</p>`
               : `<p class="next-task done">全部节点已完成 🎉</p>`
         }
@@ -2063,7 +2194,7 @@ function renderGoals() {
 
   if (title) title.textContent = FILTER_LABELS[state.filter] || '全部目标';
 
-  if (state.goals.length === 0) {
+  if (getActiveGoals().length === 0) {
     grid.innerHTML = '';
     empty.hidden = false;
     updateSortHint();
@@ -2159,14 +2290,15 @@ function renderDetailTaskItem(goal, task) {
 function renderGoalDetail() {
   const goal = state.goals.find((g) => g.id === state.selectedGoalId);
   const container = $('#goal-detail-body');
-  if (!goal || !container) {
+  if (!goal || isGoalDeleted(goal) || !container) {
     navigateTo('goals');
     return;
   }
 
   const { pct } = getTaskStats(goal);
-  const pending = goal.tasks.filter((t) => !t.completed);
-  const done = goal.tasks.filter((t) => t.completed);
+  const tasks = getGoalTasks(goal);
+  const pending = tasks.filter((t) => !t.completed);
+  const done = tasks.filter((t) => t.completed);
   const dl = formatDeadline(goal.deadline);
 
   container.innerHTML = `
@@ -2190,7 +2322,7 @@ function renderGoalDetail() {
       <div class="task-panel task-panel-page">
         <div class="task-panel-head">
           <h4>任务节点</h4>
-          <span class="task-panel-count">${goal.tasks.length} 个</span>
+          <span class="task-panel-count">${tasks.length} 个</span>
         </div>
         <form class="detail-add-task" id="detail-add-task-form">
           <input type="text" name="title" maxlength="80" placeholder="添加新任务节点…" required />
@@ -2212,7 +2344,7 @@ function renderGoalDetail() {
               </div>`
             : ''
         }
-        ${goal.tasks.length === 0 ? '<p class="no-logs">还没有任务节点，在上方输入框添加第一个吧</p>' : ''}
+        ${tasks.length === 0 ? '<p class="no-logs">还没有任务节点，在上方输入框添加第一个吧</p>' : ''}
       </div>
     </div>
   `;
@@ -2617,14 +2749,14 @@ function renderImportModal() {
   const container = $('#import-goal-list');
   if (!container) return;
 
-  const importableGoals = state.goals
+  const importableGoals = getActiveGoals()
     .map((goal) => ({
       goal,
-      tasks: goal.tasks.filter((t) => !t.completed),
+      tasks: getGoalTasks(goal).filter((t) => !t.completed),
     }))
     .filter(({ tasks }) => tasks.length > 0);
 
-  if (state.goals.length === 0) {
+  if (getActiveGoals().length === 0) {
     container.innerHTML = `<p class="no-logs">还没有学习目标，先去创建一个吧</p>`;
     return;
   }
@@ -2796,7 +2928,7 @@ function openGoalModal(goal = null) {
   $('#delete-goal-btn').hidden = !goal;
 
   editingTasks = goal
-    ? goal.tasks.map((t) => ({ ...t }))
+    ? getGoalTasks(goal).map((t) => ({ ...t }))
     : [{ id: uid(), title: '', note: '', completed: false, completedAt: null, createdAt: new Date().toISOString() }];
 
   if (goal) {
@@ -2831,6 +2963,7 @@ function collectTasksFromForm() {
         completed: existing?.completed || false,
         completedAt: existing?.completedAt || null,
         createdAt: existing?.createdAt || now,
+        updatedAt: existing?.updatedAt || now,
       };
     })
     .filter(Boolean);
@@ -2840,27 +2973,53 @@ function handleGoalSubmit(e) {
   e.preventDefault();
   const form = e.target;
   const now = new Date().toISOString();
-  const tasks = collectTasksFromForm();
+  const formTasks = collectTasksFromForm();
+  const formIds = new Set(formTasks.map((task) => task.id));
 
-  const data = {
+  const meta = {
     title: form.title.value.trim(),
     description: form.description.value.trim(),
     category: form.category.value.trim(),
     deadline: form.deadline.value,
     color: form.color.value,
-    tasks,
-    updatedAt: now,
   };
 
   if (editingGoalId) {
-    const idx = state.goals.findIndex((g) => g.id === editingGoalId);
-    if (idx >= 0) {
-      state.goals[idx] = { ...state.goals[idx], ...data };
+    const goal = state.goals.find((g) => g.id === editingGoalId);
+    if (goal) {
+      for (const task of goal.tasks) {
+        if (!formIds.has(task.id) && !isTaskDeleted(task)) {
+          touchTask(task, { deletedAt: now });
+        }
+      }
+
+      for (const formTask of formTasks) {
+        const existing = goal.tasks.find((task) => task.id === formTask.id);
+        if (existing) {
+          touchTask(existing, {
+            title: formTask.title,
+            note: formTask.note,
+            deletedAt: undefined,
+          });
+        } else {
+          goal.tasks.push({ ...formTask, deletedAt: undefined });
+        }
+      }
+
+      touchGoal(goal, meta);
       showToast('目标已更新');
     }
   } else {
-    const newGoal = { id: uid(), ...data, createdAt: now };
-    state.goals.unshift(newGoal);
+    const newGoal = {
+      id: uid(),
+      ...meta,
+      tasks: formTasks,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const tombstones = state.goals.filter((g) => isGoalDeleted(g));
+    state.goals = [newGoal, ...getActiveGoals(), ...tombstones];
+    touchGoalOrder();
     showToast('目标已创建');
   }
 
@@ -2871,14 +3030,16 @@ function handleGoalSubmit(e) {
 
 function toggleTask(goalId, taskId, completed, options = {}) {
   const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return;
+  if (!goal || isGoalDeleted(goal)) return;
 
   const task = goal.tasks.find((t) => t.id === taskId);
-  if (!task) return;
+  if (!task || isTaskDeleted(task)) return;
 
-  task.completed = completed;
-  task.completedAt = completed ? todayStr() : null;
-  goal.updatedAt = new Date().toISOString();
+  touchTask(task, {
+    completed,
+    completedAt: completed ? new Date().toISOString() : null,
+  });
+  touchGoal(goal);
 
   saveData();
   if (!options.silent) {
@@ -2889,17 +3050,19 @@ function toggleTask(goalId, taskId, completed, options = {}) {
 
 function addTaskToGoal(goalId, title) {
   const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal || !title.trim()) return;
+  if (!goal || isGoalDeleted(goal) || !title.trim()) return;
 
+  const now = new Date().toISOString();
   goal.tasks.push({
     id: uid(),
     title: title.trim(),
     note: '',
     completed: false,
     completedAt: null,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
   });
-  goal.updatedAt = new Date().toISOString();
+  touchGoal(goal);
 
   saveData();
   render();
@@ -2908,10 +3071,13 @@ function addTaskToGoal(goalId, title) {
 
 function deleteTask(goalId, taskId) {
   const goal = state.goals.find((g) => g.id === goalId);
-  if (!goal) return;
+  if (!goal || isGoalDeleted(goal)) return;
 
-  goal.tasks = goal.tasks.filter((t) => t.id !== taskId);
-  goal.updatedAt = new Date().toISOString();
+  const task = goal.tasks.find((t) => t.id === taskId);
+  if (!task || isTaskDeleted(task)) return;
+
+  touchTask(task, { deletedAt: new Date().toISOString() });
+  touchGoal(goal);
   if (state.editingGoalTaskId === taskId) state.editingGoalTaskId = null;
 
   saveData();
@@ -2923,9 +3089,14 @@ function deleteGoal() {
   if (!editingGoalId) return;
   if (!confirm('确定删除这个目标及其所有任务节点吗？')) return;
 
+  const goal = state.goals.find((g) => g.id === editingGoalId);
   const wasDetail = state.view === 'goal-detail' && state.selectedGoalId === editingGoalId;
-  if (state.pinnedGoalId === editingGoalId) state.pinnedGoalId = null;
-  state.goals = state.goals.filter((g) => g.id !== editingGoalId);
+  if (goal) touchGoal(goal, { deletedAt: new Date().toISOString() });
+  if (state.pinnedGoalId === editingGoalId) {
+    state.pinnedGoalId = null;
+    touchPinnedGoal();
+  }
+  touchGoalOrder();
   saveData();
 
   if (wasDetail) {
