@@ -1,4 +1,4 @@
-const APP_VERSION = '52';
+const APP_VERSION = '53';
 const STORAGE_KEY = 'learning-progress-data';
 const VERSION_KEY = 'learning-progress-app-version';
 const BED_MIGRATION_FLAG_KEY = 'learning-progress-bed-migration-v2';
@@ -15,7 +15,7 @@ const BED_MORNING_CUTOFF_HOUR = 12;
 /** @typedef {'home' | 'goals' | 'goal-detail'} ViewName */
 /** @typedef {'learning' | 'today' | 'sleep' | 'profile'} TabName */
 
-/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, gymDays: Record<string, true>, gymReminderDays: number, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, pinnedGoalUpdatedAt: string, goalOrderUpdatedAt: string, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
+/** @type {{ goals: Goal[], dailyTasks: Record<string, DailyTask[]>, sleepRecords: Record<string, SleepDayRecord>, gymDays: Record<string, true>, gymReminderDays: number, tab: TabName, view: ViewName, filter: string, selectedGoalId: string | null, pinnedGoalId: string | null, pinnedGoalUpdatedAt: string, goalOrderUpdatedAt: string, selectedDailyDate: string, calendarMonth: string, carryOverDailyTasks: boolean, lastRolloverDate: string, sleepChartRange: 'week' | 'month', sleepChartType: 'wake' | 'bed' | 'duration', sleepChartWeekOffset: number, sleepChartWeekCompare: boolean, sleepPanel: 'record' | 'chart' | 'history', todayCalendarOpen: boolean, expandedSubtaskParentId: string | null, editingGoalTaskId: string | null, editingDailyTaskId: string | null, editingDailySubTask: { parentId: string, subId: string } | null }} */
 let state = {
   goals: [],
   dailyTasks: {},
@@ -35,6 +35,8 @@ let state = {
   lastRolloverDate: '',
   sleepChartRange: 'week',
   sleepChartType: 'wake',
+  sleepChartWeekOffset: 0,
+  sleepChartWeekCompare: false,
   sleepPanel: 'record',
   todayCalendarOpen: false,
   expandedSubtaskParentId: null,
@@ -829,12 +831,12 @@ function saveManualSleepDuration(date, hours, minutes) {
   setSleepDuration(date, hours || 0, minutes || 0);
 }
 
-function getSleepChartDates(range = state.sleepChartRange) {
+function getSleepChartDates(range = state.sleepChartRange, weekOffset = state.sleepChartWeekOffset) {
   const dates = [];
 
   if (range === 'week') {
     const d = new Date();
-    d.setDate(d.getDate() - 6);
+    d.setDate(d.getDate() - 6 - weekOffset * 7);
     for (let i = 0; i < 7; i += 1) {
       dates.push(dateStrFromParts(d.getFullYear(), d.getMonth() + 1, d.getDate()));
       d.setDate(d.getDate() + 1);
@@ -849,6 +851,56 @@ function getSleepChartDates(range = state.sleepChartRange) {
     d.setDate(d.getDate() + 1);
   }
   return dates;
+}
+
+function formatSleepWeekRangeLabel(weekOffset = state.sleepChartWeekOffset) {
+  const dates = getSleepChartDates('week', weekOffset);
+  const start = dates[0].slice(5).replace('-', '/');
+  const end = dates[6].slice(5).replace('-', '/');
+  if (weekOffset === 0) return `本周 ${start}–${end}`;
+  return `${start}–${end}`;
+}
+
+function getSleepChartCompareDates() {
+  if (state.sleepChartRange !== 'week' || !state.sleepChartWeekCompare || state.sleepChartWeekOffset !== 0) {
+    return null;
+  }
+  return getSleepChartDates('week', 1);
+}
+
+function collectSleepTimeSlots(dates, field) {
+  return dates.map((date, index) => ({
+    date,
+    index,
+    value: state.sleepRecords[date]?.[field] || null,
+  }));
+}
+
+function collectSleepDurationSlots(dates) {
+  return dates.map((date, index) => {
+    const info = getSleepDurationForDate(date);
+    return { date, index, minutes: info?.minutes ?? null };
+  });
+}
+
+function buildSleepChartLegend({ compareDates, currentColor = '#3b82f6', previousColor = '#94a3b8' }) {
+  if (!compareDates) return '';
+
+  const currentRange = formatSleepWeekRangeLabel(0).replace(/^本周\s*/, '');
+  const previousRange = formatSleepWeekRangeLabel(1);
+
+  return `
+    <div class="sleep-chart-legend" aria-hidden="true">
+      <span class="sleep-chart-legend-item current">
+        <span class="sleep-chart-legend-dot" style="background:${currentColor}"></span>
+        本周 ${escapeHtml(currentRange)}
+      </span>
+      <span class="sleep-chart-legend-item previous">
+        <span class="sleep-chart-legend-dot" style="border-color:${previousColor}"></span>
+        上周 ${escapeHtml(previousRange)}
+      </span>
+    </div>
+  `;
 }
 
 function getRecentSleepDates(limit = 14) {
@@ -944,50 +996,34 @@ function buildChartReferenceLine({
   `;
 }
 
-function buildSleepChartPoint({ cx, cy, color, date, value, kind }) {
+function buildSleepChartPoint({ cx, cy, color, date, value, kind, series = 'current' }) {
+  const seriesLabel = series === 'previous' ? '上周' : '本周';
+  const detail = `${seriesLabel} · ${formatChartPointDetail(date, kind, value)}`;
   return `
-    <g class="sleep-chart-point" data-date="${date}" data-value="${escapeHtml(value)}" data-kind="${kind}" role="button" tabindex="0" aria-label="${escapeHtml(formatChartPointDetail(date, kind, value))}">
+    <g class="sleep-chart-point sleep-chart-point-${series}" data-date="${date}" data-value="${escapeHtml(value)}" data-kind="${kind}" data-series="${series}" role="button" tabindex="0" aria-label="${escapeHtml(detail)}">
       <circle cx="${cx}" cy="${cy}" r="12" class="sleep-chart-point-hit" />
       <circle cx="${cx}" cy="${cy}" r="4" fill="${color}" class="sleep-chart-point-dot" />
     </g>
   `;
 }
 
-function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referenceTime, referenceLabel, chartRange = 'week' }) {
-  const width = 360;
-  const height = 180;
-  const pad = { top: 16, right: 16, bottom: chartRange === 'week' ? 38 : 32, left: 48 };
-  const chartW = width - pad.left - pad.right;
-  const chartH = height - pad.top - pad.bottom;
-
-  const slots = dates.map((date, index) => {
-    const value = state.sleepRecords[date]?.[field];
-    return { date, index, value: value || null };
-  });
-
+function buildSleepTimeSeriesLayer({
+  slots,
+  dates,
+  forBed,
+  color,
+  kind,
+  minM,
+  rangeM,
+  toX,
+  toY,
+  series = 'current',
+  strokeDasharray = '',
+}) {
   const plotted = slots.filter((slot) => slot.value);
-  if (plotted.length === 0) {
-    return `
-      <article class="sleep-chart-card">
-        <h4 class="sleep-chart-title">${escapeHtml(title)}</h4>
-        <p class="sleep-chart-empty">暂无数据，点击上方按钮开始记录</p>
-      </article>
-    `;
-  }
+  if (plotted.length === 0) return { svg: '', minuteValues: [] };
 
   const minuteValues = plotted.map((slot) => parseTimeToMinutes(slot.value, forBed));
-  let minM = Math.min(...minuteValues);
-  let maxM = Math.max(...minuteValues);
-  const refMinutes = referenceTime ? parseTimeToMinutes(referenceTime, forBed) : null;
-  const avgMinutes = averageMinutes(minuteValues);
-  const rangeInfo = finalizeChartRange(minM, maxM, [refMinutes, avgMinutes]);
-  minM = rangeInfo.minM;
-  maxM = rangeInfo.maxM;
-  const rangeM = rangeInfo.rangeM;
-
-  const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
-  const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
-
   const points = plotted
     .map((slot) => {
       const mins = parseTimeToMinutes(slot.value, forBed);
@@ -1005,9 +1041,97 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
         date: slot.date,
         value: slot.value,
         kind,
+        series,
       });
     })
     .join('');
+
+  const dashAttr = strokeDasharray ? ` stroke-dasharray="${strokeDasharray}"` : '';
+  const svg = `
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="${series === 'previous' ? 2 : 2.5}" stroke-linecap="round" stroke-linejoin="round" class="sleep-chart-line sleep-chart-line-${series}"${dashAttr} />
+    ${dots}
+  `;
+
+  return { svg, minuteValues };
+}
+
+function buildSleepTimeChart({
+  title,
+  color,
+  dates,
+  field,
+  forBed,
+  kind,
+  referenceTime,
+  referenceLabel,
+  chartRange = 'week',
+  compareDates = null,
+  compareColor = '#94a3b8',
+}) {
+  const width = 360;
+  const height = 180;
+  const pad = { top: 16, right: 16, bottom: chartRange === 'week' ? 38 : 32, left: 48 };
+  const chartW = width - pad.left - pad.right;
+  const chartH = height - pad.top - pad.bottom;
+
+  const slots = collectSleepTimeSlots(dates, field);
+  const compareSlots = compareDates ? collectSleepTimeSlots(compareDates, field) : null;
+  const plotted = slots.filter((slot) => slot.value);
+  const comparePlotted = compareSlots?.filter((slot) => slot.value) || [];
+
+  if (plotted.length === 0 && comparePlotted.length === 0) {
+    return `
+      <article class="sleep-chart-card">
+        <h4 class="sleep-chart-title">${escapeHtml(title)}</h4>
+        <p class="sleep-chart-empty">暂无数据，点击上方按钮开始记录</p>
+      </article>
+    `;
+  }
+
+  const minuteValues = [
+    ...plotted.map((slot) => parseTimeToMinutes(slot.value, forBed)),
+    ...comparePlotted.map((slot) => parseTimeToMinutes(slot.value, forBed)),
+  ];
+  let minM = Math.min(...minuteValues);
+  let maxM = Math.max(...minuteValues);
+  const refMinutes = referenceTime ? parseTimeToMinutes(referenceTime, forBed) : null;
+  const avgMinutes = averageMinutes(minuteValues);
+  const rangeInfo = finalizeChartRange(minM, maxM, [refMinutes, avgMinutes]);
+  minM = rangeInfo.minM;
+  maxM = rangeInfo.maxM;
+  const rangeM = rangeInfo.rangeM;
+
+  const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
+  const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
+
+  const currentLayer = buildSleepTimeSeriesLayer({
+    slots,
+    dates,
+    forBed,
+    color,
+    kind,
+    minM,
+    rangeM,
+    toX,
+    toY,
+    series: 'current',
+  });
+
+  const compareLayer = compareSlots
+    ? buildSleepTimeSeriesLayer({
+        slots: compareSlots,
+        dates: compareDates,
+        forBed,
+        color: compareColor,
+        kind,
+        minM,
+        rangeM,
+        toX,
+        toY,
+        series: 'previous',
+        strokeDasharray: '6 4',
+      })
+    : { svg: '' };
 
   const refLine =
     refMinutes != null
@@ -1049,17 +1173,20 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   }).join('');
 
   const xLabels = buildChartXLabels({ dates, toX, height, range: chartRange });
+  const chartTitle = compareDates ? `${title}（两周对比）` : title;
+  const legend = buildSleepChartLegend({ compareDates, currentColor: color, previousColor: compareColor });
 
   return `
-    <article class="sleep-chart-card">
-      <h4 class="sleep-chart-title">${escapeHtml(title)}</h4>
+    <article class="sleep-chart-card${compareDates ? ' sleep-chart-card-compare' : ''}">
+      <h4 class="sleep-chart-title">${escapeHtml(chartTitle)}</h4>
+      ${legend}
       <div class="sleep-chart-svg-wrap">
-        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
+        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chartTitle)}">
           ${yLabels}
           ${avgLine}
           ${refLine}
-          <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-          ${dots}
+          ${compareLayer.svg}
+          ${currentLayer.svg}
           ${xLabels}
         </svg>
       </div>
@@ -1068,20 +1195,58 @@ function buildSleepTimeChart({ title, color, dates, field, forBed, kind, referen
   `;
 }
 
-function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week' }) {
+function buildSleepDurationSeriesLayer({
+  slots,
+  color,
+  kind,
+  minM,
+  rangeM,
+  toX,
+  toY,
+  series = 'current',
+  strokeDasharray = '',
+}) {
+  const plotted = slots.filter((slot) => slot.minutes != null);
+  if (plotted.length === 0) return { svg: '', minuteValues: [] };
+
+  const minuteValues = plotted.map((slot) => slot.minutes);
+  const points = plotted.map((slot) => `${toX(slot.index)},${toY(slot.minutes)}`).join(' ');
+  const dots = plotted
+    .map((slot) =>
+      buildSleepChartPoint({
+        cx: toX(slot.index),
+        cy: toY(slot.minutes),
+        color,
+        date: slot.date,
+        value: String(slot.minutes),
+        kind,
+        series,
+      })
+    )
+    .join('');
+
+  const dashAttr = strokeDasharray ? ` stroke-dasharray="${strokeDasharray}"` : '';
+  const svg = `
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="${series === 'previous' ? 2 : 2.5}" stroke-linecap="round" stroke-linejoin="round" class="sleep-chart-line sleep-chart-line-${series}"${dashAttr} />
+    ${dots}
+  `;
+
+  return { svg, minuteValues };
+}
+
+function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week', compareDates = null, compareColor = '#6ee7b7' }) {
   const width = 360;
   const height = 180;
   const pad = { top: 16, right: 16, bottom: chartRange === 'week' ? 38 : 32, left: 48 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
 
-  const slots = dates.map((date, index) => {
-    const info = getSleepDurationForDate(date);
-    return { date, index, minutes: info?.minutes ?? null };
-  });
-
+  const slots = collectSleepDurationSlots(dates);
+  const compareSlots = compareDates ? collectSleepDurationSlots(compareDates) : null;
   const plotted = slots.filter((slot) => slot.minutes != null);
-  if (plotted.length === 0) {
+  const comparePlotted = compareSlots?.filter((slot) => slot.minutes != null) || [];
+
+  if (plotted.length === 0 && comparePlotted.length === 0) {
     return `
       <article class="sleep-chart-card">
         <h4 class="sleep-chart-title">睡眠时长</h4>
@@ -1090,7 +1255,10 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
     `;
   }
 
-  const minuteValues = plotted.map((slot) => slot.minutes);
+  const minuteValues = [
+    ...plotted.map((slot) => slot.minutes),
+    ...comparePlotted.map((slot) => slot.minutes),
+  ];
   let minM = Math.min(...minuteValues);
   let maxM = Math.max(...minuteValues);
   const refMinutes = 8 * 60;
@@ -1103,19 +1271,30 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
   const toX = (index) => pad.left + (dates.length <= 1 ? chartW / 2 : (index / (dates.length - 1)) * chartW);
   const toY = (mins) => pad.top + chartH - ((mins - minM) / rangeM) * chartH;
 
-  const points = plotted.map((slot) => `${toX(slot.index)},${toY(slot.minutes)}`).join(' ');
-  const dots = plotted
-    .map((slot) =>
-      buildSleepChartPoint({
-        cx: toX(slot.index),
-        cy: toY(slot.minutes),
-        color: '#10b981',
-        date: slot.date,
-        value: String(slot.minutes),
+  const currentLayer = buildSleepDurationSeriesLayer({
+    slots,
+    color: '#10b981',
+    kind,
+    minM,
+    rangeM,
+    toX,
+    toY,
+    series: 'current',
+  });
+
+  const compareLayer = compareSlots
+    ? buildSleepDurationSeriesLayer({
+        slots: compareSlots,
+        color: compareColor,
         kind,
+        minM,
+        rangeM,
+        toX,
+        toY,
+        series: 'previous',
+        strokeDasharray: '6 4',
       })
-    )
-    .join('');
+    : { svg: '' };
 
   const yTicks = 4;
   const yLabels = Array.from({ length: yTicks + 1 }, (_, i) => {
@@ -1154,17 +1333,20 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
       : '';
 
   const xLabels = buildChartXLabels({ dates, toX, height, range: chartRange });
+  const chartTitle = compareDates ? '睡眠时长（两周对比）' : '睡眠时长';
+  const legend = buildSleepChartLegend({ compareDates, currentColor: '#10b981', previousColor: compareColor });
 
   return `
-    <article class="sleep-chart-card">
-      <h4 class="sleep-chart-title">睡眠时长</h4>
+    <article class="sleep-chart-card${compareDates ? ' sleep-chart-card-compare' : ''}">
+      <h4 class="sleep-chart-title">${escapeHtml(chartTitle)}</h4>
+      ${legend}
       <div class="sleep-chart-svg-wrap">
-        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="睡眠时长">
+        <svg class="sleep-chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(chartTitle)}">
           ${yLabels}
           ${avgLine}
           ${refLine}
-          <polyline points="${points}" fill="none" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
-          ${dots}
+          ${compareLayer.svg}
+          ${currentLayer.svg}
           ${xLabels}
         </svg>
       </div>
@@ -1175,6 +1357,7 @@ function buildSleepDurationChart({ dates, kind = 'duration', chartRange = 'week'
 
 function renderActiveSleepChart(dates) {
   const chartRange = state.sleepChartRange;
+  const compareDates = getSleepChartCompareDates();
   switch (state.sleepChartType) {
     case 'bed':
       return buildSleepTimeChart({
@@ -1187,9 +1370,11 @@ function renderActiveSleepChart(dates) {
         referenceTime: '00:00',
         referenceLabel: '12:00',
         chartRange,
+        compareDates,
+        compareColor: '#a5b4fc',
       });
     case 'duration':
-      return buildSleepDurationChart({ dates, chartRange });
+      return buildSleepDurationChart({ dates, chartRange, compareDates });
     default:
       return buildSleepTimeChart({
         title: '起床时间',
@@ -1201,6 +1386,8 @@ function renderActiveSleepChart(dates) {
         referenceTime: '08:30',
         referenceLabel: '8:30',
         chartRange,
+        compareDates,
+        compareColor: '#fcd34d',
       });
   }
 }
@@ -1337,6 +1524,27 @@ function renderSleep() {
   $$('.sleep-range-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.range === state.sleepChartRange);
   });
+
+  const weekTools = $('#sleep-week-tools');
+  if (weekTools) {
+    const isWeek = state.sleepChartRange === 'week';
+    weekTools.hidden = !isWeek;
+    if (isWeek) {
+      const rangeLabel = $('#sleep-week-range-label');
+      if (rangeLabel) rangeLabel.textContent = formatSleepWeekRangeLabel();
+      $$('.sleep-week-nav-btn').forEach((btn) => {
+        if (btn.dataset.weekAction === 'next') {
+          btn.disabled = state.sleepChartWeekOffset === 0;
+        }
+      });
+      const compareBtn = $('#sleep-week-compare-btn');
+      if (compareBtn) {
+        compareBtn.classList.toggle('active', state.sleepChartWeekCompare);
+        compareBtn.setAttribute('aria-pressed', String(state.sleepChartWeekCompare));
+        compareBtn.disabled = state.sleepChartWeekOffset !== 0;
+      }
+    }
+  }
 
   $$('.sleep-type-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.chartType === state.sleepChartType);
@@ -3165,6 +3373,31 @@ function bindEvents() {
     if (rangeBtn) {
       if (rangeBtn.dataset.range === state.sleepChartRange) return;
       state.sleepChartRange = rangeBtn.dataset.range === 'month' ? 'month' : 'week';
+      if (state.sleepChartRange === 'month') state.sleepChartWeekCompare = false;
+      renderSleep();
+      return;
+    }
+
+    const weekNavBtn = e.target.closest('.sleep-week-nav-btn');
+    if (weekNavBtn) {
+      if (state.sleepChartRange !== 'week') return;
+      if (weekNavBtn.dataset.weekAction === 'prev') {
+        state.sleepChartWeekOffset += 1;
+        state.sleepChartWeekCompare = false;
+        renderSleep();
+        return;
+      }
+      if (weekNavBtn.dataset.weekAction === 'next' && state.sleepChartWeekOffset > 0) {
+        state.sleepChartWeekOffset -= 1;
+        renderSleep();
+        return;
+      }
+    }
+
+    const compareBtn = e.target.closest('#sleep-week-compare-btn');
+    if (compareBtn) {
+      if (state.sleepChartRange !== 'week' || state.sleepChartWeekOffset !== 0) return;
+      state.sleepChartWeekCompare = !state.sleepChartWeekCompare;
       renderSleep();
       return;
     }
@@ -3184,7 +3417,8 @@ function bindEvents() {
       chartPoint.classList.add('active');
       const card = chartPoint.closest('.sleep-chart-card');
       const detail = card?.querySelector('.sleep-chart-detail');
-      const text = formatChartPointDetail(chartPoint.dataset.date, chartPoint.dataset.kind, chartPoint.dataset.value);
+      const seriesLabel = chartPoint.dataset.series === 'previous' ? '上周' : '本周';
+      const text = `${seriesLabel} · ${formatChartPointDetail(chartPoint.dataset.date, chartPoint.dataset.kind, chartPoint.dataset.value)}`;
       if (detail) detail.textContent = text;
     }
   });

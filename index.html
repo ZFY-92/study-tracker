@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.json" />
     <link rel="icon" type="image/svg+xml" href="icons/icon.svg" />
     <link rel="apple-touch-icon" href="icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=52" />
+    <link rel="stylesheet" href="styles.css?v=53" />
     <title>学习进度</title>
   </head>
   <body>
@@ -190,6 +190,14 @@
                       <button type="button" class="sleep-range-btn active" data-range="week">每周</button>
                       <button type="button" class="sleep-range-btn" data-range="month">近30天</button>
                     </div>
+                  </div>
+                  <div class="sleep-week-tools" id="sleep-week-tools">
+                    <div class="sleep-week-nav" role="group" aria-label="周视图导航">
+                      <button type="button" class="sleep-week-nav-btn" data-week-action="prev" aria-label="上一周">‹</button>
+                      <span class="sleep-week-range-label" id="sleep-week-range-label">本周</span>
+                      <button type="button" class="sleep-week-nav-btn" data-week-action="next" aria-label="下一周" disabled>›</button>
+                    </div>
+                    <button type="button" class="sleep-week-compare-btn" id="sleep-week-compare-btn" aria-pressed="false">两周对比</button>
                   </div>
                 </div>
                 <div class="sleep-charts" id="sleep-charts"></div>
@@ -462,8 +470,8 @@
 
     <div class="toast-container" id="toast-container" aria-live="polite"></div>
 
-    <script src="supabase-config.js?v=52"></script>
-    <script src="sync.js?v=52"></script>
-    <script src="app.js?v=52" type="module"></script>
+    <script src="supabase-config.js?v=53"></script>
+    <script src="sync.js?v=53"></script>
+    <script src="app.js?v=53" type="module"></script>
   </body>
 </html>
